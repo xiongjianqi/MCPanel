@@ -1,0 +1,644 @@
+MC PANEL 通用插件开发指南
+
+版本 2.0
+适用：面板插件 + 实例插件
+
+目录
+一、什么是 MC Panel 插件
+二、快速开始
+三、plugin.json 格式
+四、MCPlugin 接口
+五、面板插件 vs 实例插件
+六、PluginContext 完整 API
+七、命令系统
+八、服务器事件监听
+九、面板侧边栏页面（PanelPage）
+十、自定义 JSON API
+十一、Web 服务（registerWebHandler）
+十二、主动推送事件
+十三、前端侧 API
+十四、调试与部署
+
+一、什么是 MC Panel 插件
+
+插件是一个 JAR 包。放进去后，面板会自动加载，不用重启。
+
+插件能做的事：
+· 注册游戏内 !命令
+· 监听控制台输出、进程状态
+· 发送命令给服务器
+· 往侧边栏加自定义页面
+· 提供自定义 JSON API
+· 提供自己的 HTTP 页面（/plugins/<id>/*）
+· 主动推送事件给所有前端
+
+插件不能做的事：
+· 操作面板管理功能（用户、配置、节点）
+· 越权访问其他实例
+· 访问面板核心配置文件
+
+插件分两类：面板插件 和 实例插件。见第五章。
+
+二、快速开始
+
+2.1 目录结构
+
+    my-plugin/
+      pom.xml
+      src/main/java/com/example/myplugin/
+        MyPlugin.java
+      src/main/resources/
+        plugin.json
+
+2.2 pom.xml
+
+    <project xmlns="http://maven.apache.org/POM/4.0.0">
+      <modelVersion>4.0.0</modelVersion>
+      <groupId>com.example</groupId>
+      <artifactId>my-plugin</artifactId>
+      <version>1.0.0</version>
+      <packaging>jar</packaging>
+      <properties>
+        <maven.compiler.source>8</maven.compiler.source>
+        <maven.compiler.target>8</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+      </properties>
+      <dependencies>
+        <dependency>
+          <groupId>com.mcpanel</groupId>
+          <artifactId>mc-panel</artifactId>
+          <version>1.0.0</version>
+          <scope>provided</scope>
+        </dependency>
+      </dependencies>
+    </project>
+
+2.3 plugin.json
+
+    {
+      "id": "myplugin",
+      "name": "My Plugin",
+      "version": "1.0.0",
+      "author": "Your Name",
+      "description": "示例插件",
+      "mainClass": "com.example.myplugin.MyPlugin"
+    }
+
+2.4 最小插件
+
+    package com.example.myplugin;
+
+    import com.mcpanel.command.PlayerLevel;
+    import com.mcpanel.plugin.MCPlugin;
+    import com.mcpanel.plugin.PluginContext;
+
+    public class MyPlugin implements MCPlugin {
+        private PluginContext ctx;
+
+        @Override
+        public void onLoad(PluginContext ctx) {
+            this.ctx = ctx;
+            ctx.log("MyPlugin 已加载");
+            ctx.registerCommand("hello", PlayerLevel.GUEST, (sender, args) -> {
+                ctx.sendCommand("say Hello from " + sender);
+            });
+        }
+
+        @Override public String getName() { return "My Plugin"; }
+        @Override public String getId()   { return "myplugin"; }
+    }
+
+2.5 部署
+
+实例插件：把 jar 放到 instances/<实例ID>/plugins/
+面板插件：把 jar 放到 面板根目录/plugins/
+然后面板 → 插件管理 → 刷新。
+
+三、plugin.json 格式
+
+字段        必填  说明
+id          是   小写字母+数字，1-10 字符
+name        是   显示名称
+version     否   版本号
+author      否   作者
+description 否   描述
+mainClass   是   主类全限定名
+
+四、MCPlugin 接口
+
+    public interface MCPlugin {
+        void onLoad(PluginContext ctx);
+        default void onEnable()  {}
+        default void onDisable() {}
+        default void onUnload()  {}
+        default String getName()        { return getClass().getSimpleName(); }
+        default String getVersion()     { return "1.0.0"; }
+        default String getAuthor()      { return "unknown"; }
+        default String getDescription() { return ""; }
+        default String getId()          { return ""; }
+    }
+
+生命周期：
+
+    加载 JAR → onLoad(ctx) → onEnable()
+                                   ↓
+                              运行中...
+                                   ↓
+                    onDisable() → onUnload() → 释放
+
+关键区别：
+· onLoad 是加载时立刻调用，用来注册东西（命令、页面、API）
+· onEnable 是启用时调用，可以做启动逻辑（连外部服务、开定时任务）
+· 实例插件的 onLoad 时服务器可能还没启动，不要直接发命令
+
+五、面板插件 vs 实例插件
+
+能力                          面板插件    实例插件
+注册游戏内命令                否          是
+发送命令到服务器              否          是
+监听控制台输出                否          是
+监听服务器启停                否          是
+读写实例文件                  否          是
+注册侧边栏页面                是          是
+注册自定义 JSON API           是          是
+注册 Web 服务（/plugins/）    是          是
+主动推送事件                  是          是
+跨实例访问                    部分        否
+
+核心区别：
+
+面板插件运行在面板级别，全局唯一，不绑定任何实例，没有 ServerProcess，不能发命令。
+实例插件运行在某个实例内，每个实例各有一份，能直接操作对应服务器。
+
+目录：
+面板插件  → 面板根目录/plugins/
+实例插件  → instances/<实例ID>/plugins/
+
+实例插件详细说明见 实例插件开发指南.txt。
+
+六、PluginContext 完整 API
+
+6.1 元信息
+
+    String getPluginName();
+    File   getDataFolder();        // 实例插件: instances/<id>/plugins-data/<插件名>
+                                    // 面板插件: plugins-data/<插件名>
+    File   getSharedDataFolder();  // plugin-shared-data/<插件名>/
+    String getCurrentInstanceId();  // 面板插件返回 null
+
+6.2 日志
+
+    void log(String msg);  // 输出到面板终端，带 [插件名] 前缀
+
+6.3 发送命令（仅实例插件）
+
+    void sendCommand(String cmd);
+    void sendCommandAndCapture(String cmd, long timeoutMs, Consumer<List<String>> callback);
+    void sendCommandAndWait(String cmd, long timeoutMs,
+                            Predicate<String> stopWhen,
+                            Consumer<List<String>> callback);
+
+6.4 事件监听（仅实例插件）
+
+    void onServerOutput(Consumer<String> listener);   // 每行控制台输出
+    void onServerStatus(Consumer<Boolean> listener);  // 进程启停
+
+6.5 权限
+
+    PlayerLevel getSenderLevel(String sender);
+
+等级：GUEST(0) < USER(1) < HELPER(2) < ADMIN(3) < OWNER(4)
+
+6.6 命令
+
+    void registerCommand(String name, CommandHandler handler);
+    void registerCommand(String name, PlayerLevel minLevel, CommandHandler handler);
+    void unregisterCommand(String name);
+
+6.7 面板页面
+
+    void registerPanelPage(PanelPage page);
+    void unregisterPanelPage(String pageId);
+
+6.8 JSON API
+
+    void registerApi(String method, String path, PluginApiRegistry.Handler handler);
+    void unregisterApi(String method, String path);
+
+6.9 Web 服务
+
+    void registerWebHandler(PluginWebHandler handler);
+
+6.10 事件推送
+
+    void pushEvent(String event, Object data);
+
+6.11 实例信息
+
+    String getCurrentInstanceId();
+    List<InstanceInfo> listInstances();
+
+InstanceInfo 字段：
+    String id;
+    String name;
+    String desc;
+    boolean running;
+    boolean whitelistEnabled;
+    List<String> whitelistNames;
+
+6.12 路由记录
+
+    void setPendingRoute(String playerName, String instanceId, int ttlSeconds);
+    void setPersistentRoute(String playerName, String instanceId);
+    void clearPersistentRoute(String playerName);
+    String getPersistentRoute(String playerName);
+
+七、命令系统
+
+7.1 注册
+
+    ctx.registerCommand("hello", (sender, args) -> {
+        ctx.sendCommand("say hi");
+    });
+
+    ctx.registerCommand("admin", PlayerLevel.ADMIN, (sender, args) -> {
+        // 需要 ADMIN 级别
+    });
+
+7.2 触发
+
+玩家聊天里发 !命令名 参数 或 !!命令名 参数 都行。
+网页终端同样支持。
+
+7.3 Handler 签名
+
+    public interface CommandHandler {
+        void handle(String sender, String[] args);
+    }
+
+sender：玩家名，或 "web" / "console"
+args：参数数组（不含命令名）
+
+7.4 注意
+
+· 面板自带命令 !panel 和 !p，注册时不要冲突
+· 命令名不要用大写（自动转小写）
+· 命令 handler 运行在读取线程，不要阻塞
+
+八、服务器事件监听（仅实例插件）
+
+8.1 控制台输出
+
+    ctx.onServerOutput(line -> {
+        if (line.contains("joined the game")) {
+            ctx.log("有玩家进服: " + line);
+        }
+    });
+
+8.2 启停状态
+
+    ctx.onServerStatus(running -> {
+        ctx.log(running ? "服务器已启动" : "服务器已停止");
+    });
+
+九、面板侧边栏页面（PanelPage）
+
+插件往侧边栏加一个标签页，点击后用 iframe 加载。
+
+9.1 PanelPage 字段
+
+    public class PanelPage {
+        public String id;
+        public String title;
+        public String icon;
+        public String perm;      // 需要的权限，null = 所有登录用户
+        public String scope;     // "global" / "instance" / "both"，默认 "both"
+        public int order;        // 排序，越小越靠前
+        public Renderer renderer;
+
+        public interface Renderer {
+            String render(PageContext ctx);
+        }
+
+        public static class PageContext {
+            public String username;
+            public String instanceId;    // null = 未进入实例
+            public Map<String, String> query;
+        }
+    }
+
+9.2 注册
+
+    ctx.registerPanelPage(
+        new PanelPage("stats", "玩家统计", "📊", pctx -> {
+            return "<html>...</html>";
+        })
+        .perm("terminal")     // 需要 terminal 权限
+        .scope("both")        // 三种：global / instance / both
+        .order(50)
+    );
+
+注意：一定要用 ctx.registerPanelPage(...) 包起来！
+直接 new PanelPage(...) 只是创建对象，不会出现在侧边栏。
+
+9.3 scope 三种取值
+
+global   → 只在节点级侧边栏显示（未进入实例时）
+           适合面板级工具（节点管理、全局公告）
+instance → 只在进入实例后显示
+           适合实例级工具（白名单、玩家管理）
+both     → 都显示（默认）
+
+面板插件注册的页面通常用 global 或 both。
+实例插件注册的页面通常用 instance 或 both。
+
+9.4 Renderer 里拿参数
+
+    new PanelPage("detail", "详情", "📖", pctx -> {
+        String user = pctx.username;
+        String inst = pctx.instanceId;
+        String param = pctx.query.get("foo");
+        return "<html>...</html>";
+    })
+
+9.5 权限校验
+
+· 没设 perm → 所有登录用户可见
+· 设了 perm("terminal") → 侧边栏隐藏，直接访问 /api/plugin-pages/render 也 403
+
+十、自定义 JSON API
+
+前端用 fetch 调用，路径前缀是 /api/plugin-api/。
+
+10.1 注册
+
+    ctx.registerApi("POST", "myplugin/save", (req, resp) -> {
+        JsonNode body = req.json();
+        if (body == null || !body.has("text")) {
+            resp.error(400, "missing text");
+            return;
+        }
+        String text = body.get("text").asText();
+        // ... 处理
+        resp.ok();
+    });
+
+    ctx.registerApi("GET", "myplugin/load", (req, resp) -> {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("text", "hello");
+        resp.json(out);
+    });
+
+10.2 请求对象 PluginApiRequest
+
+    public class PluginApiRequest {
+        public String method;
+        public String path;
+        public Map<String, String> query;
+        public Map<String, String> headers;
+        public String body;
+        public String username;     // 当前登录用户
+        public String instanceId;   // 当前实例，可能 null
+
+        public JsonNode json();
+        public String queryParam(String key, String def);
+        public String header(String name);
+    }
+
+10.3 响应对象 PluginApiResponse
+
+    void status(int code);
+    void header(String name, String value);
+    void json(Object data);
+    void text(String s);
+    void ok();
+    void error(int code, String message);
+
+10.4 前端调用
+
+    fetch('/api/plugin-api/myplugin/save', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({text: 'hello'})
+    }).then(r => r.json());
+
+10.5 命名建议
+
+path 全局唯一。用插件 ID 做前缀：
+
+    myplugin/save
+    announce/publish
+    aichat/send
+
+十一、Web 服务（registerWebHandler）
+
+11.1 用途
+
+如果你想提供完整的 HTML 页面、静态资源、或者任意 HTTP 接口（不受 /api/plugin-api 限制），用 registerWebHandler。
+
+11.2 路由
+
+    /plugins/<插件ID>/<子路径>
+
+会同时在面板端口（8080）和分享端口（33333）生效。
+
+例如：
+    http://your-panel:8080/plugins/myplugin/index.html
+    http://share-ip:33333/plugins/myplugin/index.html
+
+11.3 注册
+
+    ctx.registerWebHandler((subPath, req) -> {
+        if ("/".equals(subPath) || "/index.html".equals(subPath)) {
+            req.setHeader("Content-Type", "text/html; charset=utf-8");
+            req.sendResponse("text/html; charset=utf-8",
+                "<h1>Hello from plugin!</h1>".getBytes(StandardCharsets.UTF_8));
+        } else {
+            req.setStatusCode(404);
+            req.sendText("Not Found");
+        }
+    });
+
+11.4 PluginWebRequest 接口
+
+    String getMethod();
+    String getPath();
+    String getQuery(String key, String def);
+    Map<String, Deque<String>> getAllQuery();
+    String getHeader(String name);
+    InputStream  getInputStream() throws Exception;
+    OutputStream getOutputStream() throws Exception;
+    void setStatusCode(int code);
+    void setHeader(String name, String value);
+    void sendResponse(String contentType, byte[] data);
+    void sendText(String text);
+
+11.5 subPath 规则
+
+    /plugins/myplugin/          → subPath = "/"
+    /plugins/myplugin/abc       → subPath = "/abc"
+    /plugins/myplugin/a/b/c     → subPath = "/a/b/c"
+
+11.6 静态文件服务示例
+
+把 HTML 放在 getDataFolder() 里，读出来返回：
+
+    ctx.registerWebHandler((subPath, req) -> {
+        String clean = subPath.startsWith("/") ? subPath.substring(1) : subPath;
+        File target = new File(ctx.getDataFolder(), clean.isEmpty() ? "index.html" : clean);
+        if (!target.getCanonicalPath().startsWith(ctx.getDataFolder().getCanonicalPath())) {
+            req.setStatusCode(403);
+            req.sendText("Forbidden");
+            return;
+        }
+        if (!target.exists()) {
+            req.setStatusCode(404);
+            req.sendText("Not Found");
+            return;
+        }
+        byte[] data = Files.readAllBytes(target.toPath());
+        req.sendResponse(guessMime(target.getName()), data);
+    });
+
+十二、主动推送事件
+
+12.1 用途
+
+把实时消息推给所有在线的面板前端。比如：玩家进服、AI 回复、任务进度。
+
+12.2 推送
+
+    ctx.pushEvent("player-join", data);
+
+12.3 前端订阅（主窗口）
+
+    onPluginEvent('player-join', function(data, msg) {
+        // data = 插件传的 data
+        // msg  = {plugin, event, data, ts}
+    });
+
+通配订阅：
+
+    onPluginEvent('*', function(data, msg) {
+        console.log(msg.event, data);
+    });
+
+12.4 iframe 里怎么收事件
+
+插件页面是用 iframe 加载的，iframe 里拿不到父窗口的 onPluginEvent。
+两种做法：
+
+A. iframe 里自己连 WebSocket（推荐）
+
+       var ws = new WebSocket(
+           (location.protocol === 'https:' ? 'wss://' : 'ws://')
+           + location.host + '/ws/plugin-events'
+       );
+       ws.onmessage = function(ev) {
+           var msg = JSON.parse(ev.data);
+           if (msg.event === 'player-join') { ... }
+       };
+
+B. 父窗口用 BroadcastChannel 转发
+
+   父窗口：
+       var bc = new BroadcastChannel('plugin-events');
+       onPluginEvent('*', function(data, msg) { bc.postMessage(msg); });
+
+   iframe：
+       var bc = new BroadcastChannel('plugin-events');
+       bc.onmessage = function(e) { ... };
+
+推荐 A，代码最少，也最清晰。
+
+十三、前端侧 API
+
+插件页面前端（iframe 里）可以直接用下面这些：
+
+13.1 fetch 面板 API
+
+iframe 内直接 fetch('/api/...') 即可，自动带 cookie：
+
+    fetch('/api/instances/list').then(r => r.json());
+
+13.2 iframe 里的通用工具
+
+因为 iframe 是独立文档，全局函数（toast 等）访问不到。自己写或引入：
+
+· 确认框：直接 window.confirm 或自己写
+· 提示：自己写个简易 toast
+· 剪贴板：navigator.clipboard.writeText(text)
+
+13.3 推荐做法
+
+iframe 页面自己实现工具函数，不依赖父窗口。
+这样页面可以独立调试，不耦合主面板。
+
+十四、调试与部署
+
+14.1 日志
+
+ctx.log(...) 输出到面板终端：
+
+    [Plugin] 已加载 My Plugin v1.0.0 by You [启用]
+    [My Plugin] 插件已加载
+
+14.2 常见错误
+
+现象                     原因
+jar 缺少 plugin.json     没打包进去
+plugin.json 缺 mainClass 字段没填
+未实现 MCPlugin          主类没 implements
+ClassNotFoundException   依赖没打进去，或者版本不匹配
+命令没反应               玩家聊天格式不匹配
+侧边栏没出现页面         scope / perm 不满足
+自定义 API 404           路径拼错（没带前缀也算错）
+Web 服务 404             没注册 registerWebHandler，或 ID 拼错
+事件收不到               前端没订阅，或 iframe 里没自己连 WS
+
+14.3 打包注意
+
+必须打进 JAR：plugin.json + 主类 + 自己的所有类
+
+不要打进 JAR（scope=provided）：
+· com.mcpanel.*
+· com.fasterxml.jackson.*
+· io.undertow.*
+
+14.4 热重载
+
+面板 → 插件管理 → 卸载 → 重新上传 JAR。不用重启。
+
+14.5 线程安全
+
+onServerOutput / 命令 handler 运行在读取线程，不要阻塞。
+定时任务用 ScheduledExecutorService，onUnload 里 shutdownNow()。
+
+    private ScheduledExecutorService scheduler;
+
+    public void onLoad(PluginContext ctx) {
+        scheduler = Executors.newSingleThreadScheduledExecutor();
+        scheduler.scheduleAtFixedRate(() -> {
+            // 业务逻辑
+        }, 0, 60, TimeUnit.SECONDS);
+    }
+
+    public void onUnload() {
+        if (scheduler != null) scheduler.shutdownNow();
+    }
+
+附录：PlayerLevel
+
+GUEST  → 0 访客
+USER   → 1 用户
+HELPER → 2 协助
+ADMIN  → 3 管理
+OWNER  → 4 所有者
+
+判断：
+
+    if (ctx.getSenderLevel(sender).level >= PlayerLevel.ADMIN.level) {
+        // 只有 ADMIN 及以上能进来
+    }
+
+文档结束。
