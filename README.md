@@ -4,29 +4,33 @@
 
 使用方法：
 你需要先安装java，我们的面板目前由java 8编译，所以你需要下载java 8及以上的java版本
-如果你是Windows，你可以从java.com下载
+如果你是Windows，你可以从[java.com](https://java.com)下载
 如果你是Liunx，你可以运行以下命令安装java：
 Debian & Ubuntu：
+
     ```bash
     sudo apt install openjdk-8-jdk
     ```
 
 然后你从Releases把jar文件下载下来之后，然后运行以下命令运行：
+
     ```bash
     java -jar mc-panel.jar
     ```
 
 如果你想自己编译的话，你从Code页面把代码下载下来之后，解压到一个文件夹里面
 然后准备java环境，和上面的一样，但是不同的是，你需要下载Maven
-如果你是Windows的话，你去这里下载：https://maven.apache.org/download.cgi
+如果你是Windows的话，你去这里下载：[Maven下载链接](https://maven.apache.org/download.cgi)
 关于怎么配置你可以去网上搜索"怎么配置Maven"
 Liunx的话相对简单，只要在终端输入以下命令
 Debian & Ubuntu：
+
     ```bash
     sudo apt install maven
     ```
 
 然后打开你们操作系统的终端，进入你解压后的mcpanel源代码文件夹，输入以下命令
+
     ```bash
     mvn package
     ```
