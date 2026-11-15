@@ -10,13 +10,11 @@ Debian & Ubuntu：
 
     ```bash
     sudo apt install openjdk-8-jdk
-    ```
 
 然后你从Releases把jar文件下载下来之后，然后运行以下命令运行：
 
     ```bash
     java -jar mc-panel.jar
-    ```
 
 如果你想自己编译的话，你从Code页面把代码下载下来之后，解压到一个文件夹里面
 然后准备java环境，和上面的一样，但是不同的是，你需要下载Maven
@@ -27,13 +25,11 @@ Debian & Ubuntu：
 
     ```bash
     sudo apt install maven
-    ```
 
 然后打开你们操作系统的终端，进入你解压后的mcpanel源代码文件夹，输入以下命令
 
     ```bash
     mvn package
-    ```
 
 然后它就会自己进行编译和打包了
 等它编译完成之后，你的目录下会出现一个target文件夹，进入之后，里面的mc-panel.jar就是本体了
