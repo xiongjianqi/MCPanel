@@ -7,7 +7,9 @@
 
 你需要先安装java，我们的面板目前由java 8编译，所以你需要下载java 8及以上的java版本
 如果你是Windows，你可以从[java.com](https://java.com)下载
+
 如果你是Linux，你可以运行以下命令安装java：
+
 Debian & Ubuntu：
 
 ```bash
@@ -23,8 +25,11 @@ java -jar mc-panel.jar
 如果你想自己编译的话，你从Code页面把代码下载下来之后，解压到一个文件夹里面
 然后准备java环境，和上面的一样，但是不同的是，你需要下载Maven
 如果你是Windows的话，你去这里下载：[Maven下载链接](https://maven.apache.org/download.cgi)
+
 关于怎么配置你可以去网上搜索"怎么配置Maven"
+
 Linux的话相对简单，只要在终端输入以下命令
+
 Debian & Ubuntu：
 
 ```bash
