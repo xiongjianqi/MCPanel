@@ -18,7 +18,8 @@ Debian & Ubuntu：
 
 如果你想自己编译的话，你从Code页面把代码下载下来之后，解压到一个文件夹里面
 然后准备java环境，和上面的一样，但是不同的是，你需要下载Maven
-如果你是Windows的话，你去https://maven.apache.org/download.cgi下载，关于怎么配置你可以去网上搜索"怎么配置Maven"
+如果你是Windows的话，你去这里下载：https://maven.apache.org/download.cgi
+关于怎么配置你可以去网上搜索"怎么配置Maven"
 Liunx的话相对简单，只要在终端输入以下命令
 Debian & Ubuntu：
     ```bash
