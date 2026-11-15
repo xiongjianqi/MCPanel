@@ -7,7 +7,7 @@
 
 你需要先安装java，我们的面板目前由java 8编译，所以你需要下载java 8及以上的java版本
 如果你是Windows，你可以从[java.com](https://java.com)下载
-如果你是Liunx，你可以运行以下命令安装java：
+如果你是Linux，你可以运行以下命令安装java：
 Debian & Ubuntu：
 
 ```bash
@@ -24,7 +24,7 @@ java -jar mc-panel.jar
 然后准备java环境，和上面的一样，但是不同的是，你需要下载Maven
 如果你是Windows的话，你去这里下载：[Maven下载链接](https://maven.apache.org/download.cgi)
 关于怎么配置你可以去网上搜索"怎么配置Maven"
-Liunx的话相对简单，只要在终端输入以下命令
+Linux的话相对简单，只要在终端输入以下命令
 Debian & Ubuntu：
 
 ```bash
@@ -53,6 +53,7 @@ mvn package
 未来我们会尝试支持mcdreforged插件，emmmmmm虽然不知道得到什么时候
 
 开源协议：MIT License
+
 不遵守这个我把你头剁下来qwq（假的）
 
 
