@@ -1,0 +1,172 @@
+package com.mcpanel.mc;
+
+import java.io.*;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
+import java.util.stream.Stream;
+
+public class DockerManager {
+    private static volatile boolean dockerAvailable = false;
+    private static volatile boolean checkedDocker = false;
+
+    private static String workDirPath = null;
+    private static File podmanHome = null;
+    private static String podmanTool = null;
+
+    // ==================== 1. Docker 检测 ====================
+
+    public static synchronized void initDocker(Consumer<String> logger) {
+        if (checkedDocker) return;
+        checkedDocker = true;
+        workDirPath = System.getProperty("user.dir");
+
+        logger.accept("[Runtime] 正在检测 Docker 环境...");
+        if (testDocker()) {
+            dockerAvailable = true;
+            logger.accept("[Runtime] ✓ 检测到 Docker 引擎可用");
+            return;
+        }
+
+        dockerAvailable = false;
+        
+        // 检查是否在 Docker 容器内运行
+        boolean inDocker = new File("/.dockerenv").exists();
+        if (!inDocker) {
+            try {
+                String cgroup = new String(Files.readAllBytes(Path.of("/proc/self/cgroup")), java.nio.charset.StandardCharsets.UTF_8);
+                if (cgroup.contains("docker") || cgroup.contains("kubepods")) {
+                    inDocker = true;
+                }
+            } catch (Exception ignored) {}
+        }
+
+        logger.accept("[Runtime] ✗ 未检测到 Docker 引擎！");
+        
+        if (inDocker) {
+            logger.accept("[Runtime] ⚠️ 检测到当前程序在 Docker 容器内运行。");
+            logger.accept("[Runtime] 如果你拥有物理机操作权限且希望实现实例的容器化隔离，");
+            logger.accept("[Runtime] 请在宿主机安装 Docker，并将 MC Panel 放到宿主机中直接运行，而不是嵌套在容器中。");
+        } else {
+            logger.accept("[Runtime] 提示：如果你希望使用 Docker 容器来隔离 Minecraft 实例，");
+            logger.accept("[Runtime] 请在宿主机安装 Docker（如 apt install docker.io），安装完成后重启本面板即可。");
+        }
+        
+        logger.accept("[Runtime] 当前已自动降级为【无沙箱模式】运行，不影响面板基础功能。");
+    }
+
+    public static boolean isDockerAvailable() {
+        return dockerAvailable;
+    }
+
+    private static boolean testDocker() {
+        try {
+            Process p = new ProcessBuilder("docker", "info").start();
+            return p.waitFor(5, TimeUnit.SECONDS) && p.exitValue() == 0;
+        } catch (Exception ignored) { return false; }
+    }
+
+    // ==================== 公共工具 ====================
+
+    public static String getDockerCmd() {
+        if (podmanTool != null) return podmanTool;
+        return "docker";
+    }
+
+    // ==================== Docker 操作 ====================
+
+    public static void ensureImage(String image, File localTar, Consumer<String> logger) throws Exception {
+        if (!dockerAvailable) throw new RuntimeException("Docker 不可用");
+        Process inspect = new ProcessBuilder(getDockerCmd(), "image", "inspect", image).redirectErrorStream(true).start();
+        if (inspect.waitFor(5, TimeUnit.SECONDS) && inspect.exitValue() == 0) {
+            if (logger != null) logger.accept("[Docker] 镜像已存在: " + image);
+            return;
+        }
+        if (localTar != null && localTar.exists()) {
+            if (logger != null) logger.accept("[Docker] 发现离线镜像包，正在导入...");
+            Process load = new ProcessBuilder(getDockerCmd(), "load", "-i", localTar.getAbsolutePath()).redirectErrorStream(true).start();
+            if (load.waitFor(15, TimeUnit.MINUTES) && load.exitValue() == 0) return;
+        }
+        if (logger != null) logger.accept("[Docker] 正在拉取镜像: " + image);
+        Process pull = new ProcessBuilder(getDockerCmd(), "pull", image).redirectErrorStream(true).start();
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(pull.getInputStream()))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                if (logger != null) logger.accept("[Docker Pull] " + line.trim());
+            }
+        }
+        if (!pull.waitFor(30, TimeUnit.MINUTES) || pull.exitValue() != 0) throw new RuntimeException("镜像拉取失败");
+        if (logger != null) logger.accept("[Docker] ✓ 镜像拉取完成");
+    }
+
+    public static String runContainer(String name, String image, File dataDir, int port, List<String> envs) throws Exception {
+        if (!dockerAvailable) throw new RuntimeException("Docker 不可用");
+        new ProcessBuilder(getDockerCmd(), "rm", "-f", name).start().waitFor(10, TimeUnit.SECONDS);
+
+        List<String> cmd = new ArrayList<>();
+        cmd.add(getDockerCmd()); cmd.add("run"); cmd.add("-d");
+        cmd.add("--name"); cmd.add(name);
+        cmd.add("--cap-drop=ALL");
+        cmd.add("--security-opt=no-new-privileges");
+        cmd.add("-v"); cmd.add(dataDir.getAbsolutePath() + ":/data");
+        if (port > 0) { cmd.add("-p"); cmd.add(port + ":" + port); }
+        if (envs != null) {
+            for (String e : envs) { cmd.add("-e"); cmd.add(e); }
+        }
+        cmd.add(image);
+
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        if (podmanHome != null) {
+            pb.environment().put("HOME", workDirPath);
+            pb.environment().put("PATH", podmanHome.getAbsolutePath() + ":" + System.getenv("PATH"));
+        }
+        pb.redirectErrorStream(true);
+        Process p = pb.start();
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+            String line = br.readLine();
+            if (p.waitFor(30, TimeUnit.SECONDS)) {
+                if (p.exitValue() != 0) throw new RuntimeException("容器启动失败: " + line);
+                return line != null ? line.trim() : name;
+            }
+        }
+        throw new RuntimeException("容器启动超时");
+    }
+
+    public static Process streamLogs(String name) throws IOException {
+        ProcessBuilder pb = new ProcessBuilder(getDockerCmd(), "logs", "-f", name);
+        if (podmanHome != null) pb.environment().put("PATH", podmanHome.getAbsolutePath() + ":" + System.getenv("PATH"));
+        return pb.redirectErrorStream(true).start();
+    }
+
+    public static void execCommand(String name, String command) throws IOException {
+        ProcessBuilder pb = new ProcessBuilder(getDockerCmd(), "exec", name, "rcon-cli", command);
+        if (podmanHome != null) pb.environment().put("PATH", podmanHome.getAbsolutePath() + ":" + System.getenv("PATH"));
+        pb.redirectErrorStream(true).start();
+    }
+
+    public static void stopContainer(String name) throws IOException {
+        new ProcessBuilder(getDockerCmd(), "stop", "-t", "10", name).start();
+    }
+
+    public static void killContainer(String name) throws IOException {
+        new ProcessBuilder(getDockerCmd(), "rm", "-f", name).start();
+    }
+
+    public static long getContainerPid(String name) {
+        try {
+            Process p = new ProcessBuilder(getDockerCmd(), "inspect", "-f", "{{.State.Pid}}", name).start();
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+                String line = br.readLine();
+                if (line != null && !line.isEmpty()) return Long.parseLong(line.trim());
+            }
+        } catch (Exception ignored) {}
+        return -1;
+    }
+}

@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>MC Panel</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body autocomplete="off">
+
+<div class="sidebar">
+  <div class="logo"><div class="logo-mark">MC</div><div class="logo-text">MC Panel</div></div>
+
+  <a data-tab="instances">
+    <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+    <span>实例列表</span>
+  </a>
+
+  <a data-tab="terminal" style="display:none;">
+    <svg viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+    <span>终端</span>
+  </a>
+  <a data-tab="files" style="display:none;">
+    <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+    <span>文件管理</span>
+  </a>
+  <a data-tab="backup" style="display:none;">
+    <svg viewBox="0 0 24 24"><line x1="22" y1="12" x2="2" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" y1="16" x2="6.01" y2="16"/><line x1="10" y1="16" x2="10.01" y2="16"/></svg>
+    <span>备份管理</span>
+  </a>
+  <a data-tab="serverprops" style="display:none;">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    <span>服务器配置</span>
+  </a>
+
+  <a data-tab="java" style="display:none;">
+    <svg viewBox="0 0 24 24"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
+    <span>Java 环境</span>
+  </a>
+  <a data-tab="installer" style="display:none;">
+    <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    <span>安装服务端</span>
+  </a>
+  <a data-tab="remote" style="display:none;">
+    <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+    <span>远程管理</span>
+  </a>
+
+  <a data-tab="panel-log" style="display:none;">
+    <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+    <span>面板日志</span>
+  </a>
+  <a data-tab="config" style="display:none;">
+    <svg viewBox="0 0 24 24"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+    <span>配置管理</span>
+  </a>
+  <a data-tab="users" style="display:none;">
+    <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    <span>子用户</span>
+  </a>
+  <a data-tab="plugins" style="display:none;">
+    <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+    <span>插件管理</span>
+  </a>
+  <a data-tab="share" style="display:none;">
+    <svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+    <span>分享管理</span>
+  </a>
+  <a data-tab="smtp" style="display:none;">
+    <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+    <span>SMTP 管理</span>
+  </a>
+  <a data-tab="personalization" style="display:none;">
+    <svg viewBox="0 0 24 24"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
+    <span>个性化</span>
+  </a>
+
+  <div id="sidebar-user-footer" style="margin-top:auto; padding: 16px 12px; border-top: 1px solid var(--border); display:flex; align-items:center; gap:10px; cursor:pointer; transition: background 0.2s;" onclick="switchTab('account')">
+    <img id="footer-avatar" style="width:32px; height:32px; border-radius:50%; object-fit: cover; background:#2b3449;">
+    <span id="footer-username" style="font-size:14px; font-weight:600; color:#fff; overflow:hidden; text-overflow: ellipsis; white-space: nowrap;">加载中...</span>
+  </div>
+</div>
+
+<div class="main">
+  <div id="tab-instances" style="display:none;">
+    <h2>我的实例</h2>
+    <div id="instance-grid" class="instance-grid"></div>
+  </div>
+
+  <div id="tab-smtp" style="display:none;">
+    <h2>SMTP 邮件服务</h2>
+    <div class="card" style="max-width:640px; margin-bottom:20px; background:rgba(233,69,96,0.1); border-color:rgba(233,69,96,0.3);">
+      <div style="font-size:13px; line-height:1.6; color:#e8ebf5;">
+        <b>💡 配置指南：</b><br>
+        1. <b>QQ邮箱</b>：服务器填 <code>smtp.qq.com</code>，端口 <code>465</code>，加密方式选 <code>SSL</code>。<br>
+        2. <b>网易/163邮箱</b>：服务器填 <code>smtp.163.com</code>，端口 <code>465</code>，加密方式选 <code>SSL</code>。<br>
+        3. ⚠️ 最下方的密码栏，<b>不是填QQ密码</b>，而是填 <b>授权码</b>！<br>
+        <a href="https://service.mail.qq.com/detail/0/75" target="_blank" style="color:var(--brand-2); text-decoration:underline; margin-top:8px; display:inline-block;">点我查看如何获取 QQ 邮箱授权码</a>
+      </div>
+    </div>
+    <div class="card" style="max-width:640px;">
+      <label style="font-size:13px; color:var(--text-dim); margin-bottom:6px; display:block;">SMTP 服务器地址</label>
+      <input id="smtp-host" type="text" class="sp-input" style="margin-bottom:14px; font-size:13px;" placeholder="例如: smtp.qq.com">
+      <label style="font-size:13px; color:var(--text-dim); margin-bottom:6px; display:block;">端口</label>
+      <input id="smtp-port" type="number" class="sp-input" style="margin-bottom:14px; font-size:13px;" value="465" placeholder="465">
+      <label style="font-size:13px; color:var(--text-dim); margin-bottom:6px; display:block;">加密方式</label>
+      <select id="smtp-ssl" class="sp-input" style="margin-bottom:14px; font-size:13px;">
+        <option value="ssl">SSL (通常 465 端口)</option>
+        <option value="tls">STARTTLS (通常 587 端口)</option>
+        <option value="none">不加密</option>
+      </select>
+      <label style="font-size:13px; color:var(--text-dim); margin-bottom:6px; display:block;">发件人邮箱地址</label>
+      <input id="smtp-from" type="email" class="sp-input" style="margin-bottom:14px; font-size:13px;" placeholder="例如: 123456@qq.com">
+      <label style="font-size:13px; color:var(--text-dim); margin-bottom:6px; display:block;">邮箱账号 (通常与发件人相同)</label>
+      <input id="smtp-user" type="text" class="sp-input" style="margin-bottom:14px; font-size:13px;" placeholder="例如: 123456@qq.com">
+      <label style="font-size:13px; color:var(--text-dim); margin-bottom:6px; display:block;">密码或授权码 (留空则保存时不修改)</label>
+      <input id="smtp-pass" type="password" class="sp-input" style="margin-bottom:20px; font-size:13px;" placeholder="输入邮箱授权码">
+      <div style="display:flex; gap:10px;">
+        <button class="btn primary" onclick="smtpSave()">保存配置</button>
+        <button class="btn" onclick="smtpTest()">发送测试邮件</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="tab-panel-log" style="display:none;">
+    <h2>面板日志</h2>
+    <div id="panel-log-output" class="term-output" style="height: 600px; background: #0c1018; padding: 16px; color:#dbe0ec;"></div>
+  </div>
+
+  <div id="tab-panel-plugins" style="display:none;">
+    <h2>面板插件</h2>
+    <div id="panel-plugins-content"></div>
+  </div>
+
+  <div id="tab-installer" style="display:none;">
+    <h2>安装服务端</h2>
+    <div class="cards" id="installer-core-list" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr));margin-top:20px;"></div>
+  </div>
+
+  <div id="tab-java" style="display:none;">
+    <h2>Java 环境管理</h2>
+    <div class="toolbar" style="margin-bottom:20px;">
+      <button class="btn" onclick="javaRefresh()">刷新状态</button>
+      <span id="java-current-badge" class="pill" style="margin-left:10px;">当前使用：系统默认 Java</span>
+    </div>
+    <div id="java-list" class="cards" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr));"></div>
+  </div>
+
+  <div id="tab-remote" style="display:none;">
+    <h2>远程管理</h2>
+    
+    <div id="remote-need-2fa" class="placeholder" style="display:none; color:#f0c040;">
+        出于安全考虑，查看 Root 远程管理必须先绑定二次验证 (2FA)。<br><br>
+        <button class="btn primary" onclick="switchTab('account')">前往账户管理绑定</button>
+    </div>
+
+    <div id="remote-need-key" class="placeholder" style="display:none; color:#e94560;">
+        <b>⚠️ 安全警告：尚未配置 Root 密钥登录</b><br>
+        为了避免密码被暴力破解，系统禁止直接使用 Root 密码进行 SSH。请先点击下方按钮配置密钥对。<br><br>
+        <button class="btn primary" onclick="setupRootKey()">一键配置 Root 密钥登录</button>
+    </div>
+
+    <div id="remote-card" class="card" style="max-width:640px; display:none;">
+      <div class="label" style="font-size:14px; color:#fff; margin-bottom:12px;">SSH / SFTP 连接信息</div>
+      <div class="hint">连接地址 (主机)</div>
+      <div class="api-key-box" id="remote-domain" style="margin-bottom:12px; color:#fff;">-</div>
+      
+      <div style="display:flex; gap:12px; margin-bottom:12px;">
+        <div style="flex:1;">
+          <div class="hint">SSH 端口</div>
+          <div class="api-key-box" id="remote-ssh-port" style="color:#fff;">-</div>
+        </div>
+        <div style="flex:1;">
+          <div class="hint">SFTP 端口</div>
+          <div class="api-key-box" id="remote-sftp-port" style="color:#fff;">-</div>
+        </div>
+      </div>
+
+      <div class="hint">用户名</div>
+      <div class="api-key-box" id="remote-user" style="margin-bottom:12px; color:#e94560;">-</div>
+      
+      <div id="remote-pass-box">
+        <div class="hint">密码</div>
+        <div class="api-key-box" id="remote-pass" style="margin-bottom:12px; color:#3ddc84;">-</div>
+      </div>
+      
+      <div id="remote-auth-type" style="margin-bottom:12px; display:none;">
+        <div class="hint">认证方式</div>
+        <div class="api-key-box" style="color:#3ddc84;">SSH 密钥 (已启用)</div>
+      </div>
+
+      <div style="display:flex; gap:8px; margin-top:16px; flex-wrap:wrap;">
+        <button class="btn primary" onclick="copyRemoteCmd('ssh')">复制 SSH 命令</button>
+        <button class="btn" onclick="copyRemoteCmd('sftp')">复制 SFTP 命令</button>
+        <button class="btn" id="btn-download-key" style="display:none;" onclick="downloadRootKey()">下载私钥文件</button>
+      </div>
+    </div>
+    
+    <div id="remote-disabled" class="placeholder" style="display:none;">当前运行环境不支持系统级权限隔离（仅限 Root + 无沙箱环境）。</div>
+  </div>
+
+  <div id="tab-velocitycfg" style="display:none;">
+    <h2>Velocity 配置</h2>
+    <div id="vel-container" style="margin-top: 20px;"></div>
+  </div>
+
+  <div id="tab-terminal" style="display:none;">
+    <h2>终端</h2>
+    <div class="terminal-layout">
+      <div class="terminal-main">
+        <div class="toolbar">
+          <button id="term-power-btn" class="btn primary" onclick="termToggle()">启动</button>
+          <button class="btn" id="term-restart-btn" onclick="termAction('restart')">重启</button>
+          <button class="btn danger" id="term-kill-btn" onclick="termAction('kill')">终止</button>
+          <span id="term-status" class="pill" style="margin-left:auto;">未连接</span>
+        </div>
+        <div id="term-output" class="term-output"></div>
+        <div class="term-input-row">
+          <textarea id="term-input" class="term-input" rows="1" placeholder="输入命令，回车发送" autocomplete="one-time-code" autocorrect="off" autocapitalize="off" data-lpignore="true" data-form-type="other" data-1p-ignore spellcheck="false"></textarea>
+          <button class="btn primary" onclick="termSend()">发送</button>
+        </div>
+        <details class="settings-box">
+          <summary>终端设置</summary>
+          <div class="settings-body">
+            <label id="ts-start-label">启动命令</label>
+            <input id="ts-start" type="text" placeholder="java -Xmx2G -jar server.jar nogui" autocomplete="off">
+            <label>关闭命令</label>
+            <input id="ts-stop" type="text" placeholder="stop" autocomplete="off">
+            <label>重启延迟（毫秒）</label>
+            <input id="ts-delay" type="number" placeholder="5000" autocomplete="off">
+            <div class="checkbox-row">
+              <input type="checkbox" id="ts-auto">
+              <label for="ts-auto">进程意外退出时自动重启</label>
+            </div>
+            <div class="checkbox-row">
+              <input type="checkbox" id="ts-autostart">
+              <label for="ts-autostart">面板启动时自动启动该实例</label>
+            </div>
+            <label>监听端口（玩家连这个）</label>
+            <input id="ts-port" type="number" placeholder="25565" autocomplete="off">
+            <div class="hint" style="margin-top:8px;">修改后需要 <b>重启</b> 才能生效。</div>
+            <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap;">
+              <button class="btn primary" onclick="termSaveSettings()">保存设置</button>
+              <button class="btn danger" onclick="termClearLog()">清空日志</button>
+            </div>
+          </div>
+        </details>
+      </div>
+      <div class="terminal-sidebar">
+        <h3 style="margin-top:0;">/ 仪表盘</h3>
+        <div class="cards terminal-dash-cards">
+          <div class="card"><div class="label">运行状态</div><div class="value" id="d-running">-</div></div>
+          <div class="card"><div class="label">PID</div><div class="value" id="d-pid">-</div></div>
+          <div class="card"><div class="label">运行时间</div><div class="value" id="d-uptime">-</div></div>
+          <div class="card"><div class="label">CPU 负载</div><div class="value" id="d-cpu">-</div></div>
+          <div class="card"><div class="label">服务器内存</div><div class="value" id="d-mem">-</div></div>
+          <div class="card"><div class="label">磁盘占用</div><div class="value" id="d-disk">-</div></div>
+          <div class="card"><div class="label" title="包含面板自身与系统通信">系统入站流量</div><div class="value" id="d-netin">-</div></div>
+          <div class="card"><div class="label" title="包含面板自身与系统通信">系统出站流量</div><div class="value" id="d-netout">-</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="toolbar" style="margin-top:20px; margin-bottom:-10px;">
+      <button class="btn small primary" id="btn-chart-live" onclick="switchChartRange('live')">实时</button>
+      <button class="btn small" id="btn-chart-day" onclick="switchChartRange('day')">本日</button>
+      <button class="btn small" id="btn-chart-week" onclick="switchChartRange('week')">本周</button>
+    </div>
+    <div class="chart-container">
+      <div class="chart-box"><div class="chart-title">CPU 占用 (%)</div><canvas id="chart-cpu"></canvas></div>
+      <div class="chart-box"><div class="chart-title">内存占用 (%)</div><canvas id="chart-mem"></canvas></div>
+      <div class="chart-box"><div class="chart-title">入站带宽 (KB/s)</div><canvas id="chart-netin"></canvas></div>
+      <div class="chart-box"><div class="chart-title">出站带宽 (KB/s)</div><canvas id="chart-netout"></canvas></div>
+    </div>
+  </div>
+
+  <div id="tab-files" style="display:none;">
+    <h2>文件管理</h2>
+    <div class="path" id="files-path">/</div>
+    <div class="toolbar">
+      <button class="btn" onclick="filesUp()">上级</button>
+      <button class="btn" onclick="filesRefresh()">刷新</button>
+      
+      <div class="dropdown">
+        <button class="btn primary" onclick="filesToggleNewMenu(event)">新建</button>
+        <div id="files-new-menu" class="dropdown-menu">
+          <a onclick="filesNewFile()">空白文件</a>
+          <a onclick="filesMkdir()">文件夹</a>
+        </div>
+      </div>
+      
+      <button class="btn primary" onclick="filesUploadClick()">上传</button>
+      <input type="file" id="files-upload-input" class="hidden-file">
+      
+      <div class="flex-spacer" style="flex:1;"></div>
+      
+      <button class="btn" onclick="filesSelectAll()">全选</button>
+      <button class="btn" id="files-unselect-btn" onclick="filesUnselectAll()" style="display:none;">取消选择</button>
+      
+      <div class="dropdown" id="files-batch-dropdown" style="display:none;">
+        <button class="btn btn-action" id="files-batch-btn" onclick="filesToggleBatchMenu(event)"><span>批量操作</span> <svg class="arrow-svg" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:4px;"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
+        <div id="files-batch-menu" class="dropdown-menu">
+          <a onclick="filesBatchDownload()">批量下载</a>
+          <a onclick="filesCopySelected()">复制</a>
+          <a onclick="filesCutSelected()">剪切</a>
+          <a onclick="filesPaste()">粘贴</a>
+          <a onclick="filesCompressSelected()">压缩</a>
+          <a onclick="filesDeleteSelected()" style="color:#ff5c5c;">删除选中</a>
+        </div>
+      </div>
+    </div>
+    <div id="files-clip-info" class="clip-info" style="display:none;">
+      <span id="files-clip-text"></span>
+      <button class="btn" onclick="filesClearClip()">取消</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:36px;"></th><th>名称</th><th>大小</th><th>修改时间</th><th>操作</th></tr></thead>
+        <tbody id="files-list"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="tab-backup" style="display:none;">
+    <h2>备份管理</h2>
+    <div class="toolbar">
+      <button class="btn primary" onclick="backupAdd()">新建备份</button>
+      <button class="btn" onclick="backupRefresh()">刷新</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>名称</th><th>描述</th><th>大小</th><th>操作</th></tr></thead>
+        <tbody id="backup-list"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="tab-config" style="display:none;">
+    <h2>配置管理</h2>
+    <div class="toolbar">
+      <input id="cfg-search" class="cfg-search" placeholder="搜索键名或值..." oninput="cfgRender()">
+      <button class="btn" onclick="cfgRefresh()">刷新</button>
+      <button class="btn primary" onclick="cfgAddNew()">添加配置项</button>
+      <button class="btn" onclick="cfgSslUpload()">SSL 设置</button>
+      <button class="btn danger" onclick="panelShutdown()" style="margin-left:auto;">关闭面板</button>
+    </div>
+    <div id="cfg-container"></div>
+  </div>
+
+  <div id="tab-serverprops" style="display:none;">
+    <h2>服务器配置</h2>
+    <div id="sp-eula-card" class="sp-eula-card">
+      <div class="sp-eula-info">
+        <div class="sp-eula-title">同意 Minecraft EULA</div>
+        <div class="sp-eula-desc">首次启动 MC 之前必须同意 <a href="https://aka.ms/MinecraftEULA" target="_blank" rel="noopener noreferrer">Minecraft EULA</a>。勾选后会在 <code>server</code> 目录生成 <code>eula.txt</code>。</div>
+      </div>
+      <label class="sp-eula-toggle"><input type="checkbox" id="sp-eula-toggle" onchange="spToggleEula(this)"><span class="sp-eula-label">已同意</span></label>
+    </div>
+    <div class="toolbar">
+      <input id="sp-search" class="cfg-search" placeholder="搜索键名或值..." oninput="spFilterChange()">
+      <button class="btn" onclick="spRefresh()">刷新</button>
+      <button class="btn primary" id="sp-save-all" onclick="spSaveAll()" disabled>保存所有更改</button>
+    </div>
+    <div id="sp-container"></div>
+  </div>
+
+  <div id="tab-users" style="display:none;">
+    <h2>子用户</h2>
+    <div class="toolbar">
+      <button class="btn primary" onclick="usersAdd()">添加子用户</button>
+      <button class="btn" onclick="usersRefresh()">刷新</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>用户名</th><th>权限</th><th>可访问实例</th><th>操作</th></tr></thead>
+        <tbody id="users-list"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="tab-account" style="display:none;">
+    <h2>账户管理</h2>
+    <div style="display:flex; flex-direction:column; align-items:center; margin-bottom:30px;">
+      <div style="position:relative; width:100px; height:100px; margin-bottom:16px;">
+        <img id="acc-avatar-preview" style="width:100%; height:100%; border-radius:50%; object-fit:cover; border:3px solid var(--border); background:#1b212e;">
+      </div>
+      <div style="font-size:20px; font-weight:700; color:#fff; margin-bottom:4px;" id="acc-username">-</div>
+      <div style="color:var(--text-dim); font-size:13px; margin-bottom:16px;" id="acc-role">用户</div>
+      <input type="file" id="acc-avatar-input" accept="image/*" style="display:none;" onchange="accUploadAvatar(this)">
+      <button class="btn primary" onclick="document.getElementById('acc-avatar-input').click()">修改头像 (限 5MB)</button>
+    </div>
+    <h3>修改用户名</h3>
+    <div class="acc-section">
+      <div class="acc-field"><label>新用户名（至少 2 位）</label><input id="acc-new-username" type="text" placeholder="输入新用户名" autocomplete="off"></div>
+      <div><button class="btn primary" onclick="accChangeUsername()">修改用户名</button></div>
+    </div>
+    <h3>修改密码</h3>
+    <div class="acc-section">
+      <div class="acc-field"><label>当前密码</label><input id="acc-old-pass" type="text" class="pwd-mask" placeholder="输入当前密码" autocomplete="off"></div>
+      <div class="acc-field"><label>新密码（至少 8 位）</label><input id="acc-new-pass" type="text" class="pwd-mask" placeholder="新密码" autocomplete="off"></div>
+      <div class="acc-field"><label>确认新密码</label><input id="acc-new-pass2" type="text" class="pwd-mask" placeholder="再次输入新密码" autocomplete="off"></div>
+      <div><button class="btn primary" onclick="accChangePassword()">修改密码</button></div>
+    </div>
+    
+    <h3>二次验证 (2FA)</h3>
+    <div class="acc-section">
+      <div class="hint">绑定 Google Authenticator 或 Microsoft Authenticator，登录和找回密码时提供动态验证码。</div>
+      <div id="acc-totp-box" style="margin-top:14px;">
+        <button class="btn primary" onclick="totpSetup()">绑定动态令牌</button>
+        <button class="btn danger" onclick="totpDisable()" id="btn-totp-disable" style="display:none;">解绑</button>
+      </div>
+      
+      <div id="acc-2fa-device-setting" style="margin-top:20px;">
+        <label style="font-size:13px; margin-bottom:8px; display:block;">新设备登录强制验证方式</label>
+        <select id="acc-2fa-method" class="sp-input" onchange="update2faMethod(this)">
+          <option value="none">关闭（仅使用密码）</option>
+        </select>
+        <div id="acc-2fa-warning" class="hint" style="display:none; color:#ff5c5c; margin-top:8px;">
+          您目前尚未配置二次验证，请配置后再打开此选项。
+        </div>
+      </div>
+    </div>
+
+    <h3>账户恢复码</h3>
+    <div class="acc-section">
+      <div class="hint">如果丢失了动态令牌，必须使用恢复码重置密码。恢复码只会显示一次，请妥善保存。</div>
+      <div style="margin-top:14px;"><button class="btn" onclick="generateRecovery()">生成恢复码</button></div>
+      <div id="acc-recovery-display" class="api-key-box" style="display:none; margin-top:14px;"></div>
+    </div>
+
+    <h3>绑定安全邮箱</h3>
+    <div class="acc-section">
+      <div class="hint">用于接收登录警告、找回密码、以及被邀请时接收邮件。</div>
+      <div id="acc-email-box" style="margin-top:14px; display:none;">
+        <input id="acc-email-input" type="email" class="sp-input" style="margin-bottom:12px;" placeholder="输入新邮箱地址">
+        <div style="display:flex; gap:10px; margin-bottom:12px;">
+          <input id="acc-email-code" type="text" class="sp-input" placeholder="输入验证码" style="flex:1;">
+          <button class="btn" style="white-space:nowrap;" onclick="accSendEmailCode()">发送验证码</button>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn primary" onclick="accBindEmail()">确认绑定</button>
+        </div>
+      </div>
+      <div id="acc-email-current" class="hint" style="display:none; margin-bottom:12px; color:#3ddc84;">
+        当前已绑定邮箱：<span id="acc-email-text"></span>
+        <button class="btn danger small" style="margin-left:10px;" onclick="accUnbindEmail()">解绑</button>
+      </div>
+      <div id="acc-email-no-smtp" class="hint" style="display:none; color:#ff5c5c;">
+        当前面板尚未配置 SMTP 邮件服务，无法使用邮箱相关功能。请联系管理员配置。
+      </div>
+    </div>
+
+    <h3>API Key</h3>
+    <div class="acc-section">
+      <div class="hint">API Key 可用于脚本或第三方工具调用本面板的接口。请求时把它放到 <code>X-API-Key</code> 头，或作为 <code>?apikey=</code> 参数附加到 URL 后。</div>
+      <div id="acc-apikey-box" class="api-key-box empty">加载中...</div>
+      <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn primary" onclick="accGenerateKey()">生成新 Key</button>
+        <button class="btn" onclick="accCopyKey()">复制</button>
+        <button class="btn danger" onclick="accRevokeKey()">撤销</button>
+      </div>
+    </div>
+
+    <div class="acc-section" style="margin-top:40px; padding-top:20px; border-top:1px solid var(--border); margin-bottom:40px;">
+      <button class="btn danger" onclick="accLogout()">退出登录</button>
+    </div>
+  </div>
+
+  <div id="tab-plugins" style="display:none;">
+    <h2>插件管理</h2>
+    <div class="toolbar">
+      <button class="btn primary" onclick="pluginsUploadClick()">上传插件</button>
+      <button class="btn" onclick="pluginsRefresh()">刷新</button>
+      <a class="btn" href="/plugin-dev-guide.txt" download="MC-Panel-插件开发指南.txt" target="_blank" rel="noopener noreferrer">下载开发指南</a>
+      <input type="file" id="plugins-upload-input" class="hidden-file" accept=".jar">
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>名称</th><th>版本</th><th>作者</th><th>描述</th><th>状态</th><th>操作</th></tr></thead>
+        <tbody id="plugins-list"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="tab-share" style="display:none;">
+    <h2>分享管理</h2>
+    <div class="toolbar"><button class="btn" onclick="shareRefresh()">刷新</button></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>文件名</th><th>链接</th><th>状态</th><th>节点</th><th>创建时间</th><th>创建者</th><th>操作</th></tr></thead>
+        <tbody id="share-list"></tbody>
+      </table>
+    </div>
+    <h3 style="margin-top:28px;">访问记录</h3>
+    <div class="toolbar"><button class="btn" onclick="shareRefreshLogs()">刷新</button></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>时间</th><th>分享</th><th>IP</th><th>流量</th><th>状态</th></tr></thead>
+        <tbody id="share-logs"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="tab-personalization" style="display:none;">
+    <h2>个性化设置</h2>
+    <div class="card" style="max-width:640px; margin-bottom:20px;">
+      <div class="label">页面字体文件</div>
+      <div class="hint" style="margin-top:4px;">支持 ttf / otf / woff / woff2，限制 5MB。将全局应用。</div>
+      <input type="file" id="per-font-input" accept=".ttf,.otf,.woff,.woff2" style="margin-top:12px; display:none;" onchange="perUploadFont(this)">
+      <div style="display:flex; gap:8px; margin-top:12px;">
+        <button class="btn primary" onclick="document.getElementById('per-font-input').click()">上传字体文件</button>
+        <button class="btn danger" onclick="perRemoveFont()">恢复默认字体</button>
+      </div>
+    </div>
+    <div class="card" style="max-width:640px; margin-bottom:20px;">
+      <div class="label">页面背景图片 (限制 20MB)</div>
+      <div class="hint" style="margin-top:4px;">支持 jpg/png/webp。推荐使用暗色调图片。</div>
+      <input type="file" id="per-bg-input" accept="image/*" style="margin-top:12px; display:none;" onchange="perUploadBg(this)">
+      <div style="display:flex; gap:8px; margin-top:12px;">
+        <button class="btn primary" onclick="document.getElementById('per-bg-input').click()">上传背景图</button>
+        <button class="btn danger" onclick="perRemoveBg()">恢复默认背景</button>
+      </div>
+    </div>
+    <div class="card" style="max-width:640px;">
+      <div class="label">自定义 CSS 文件</div>
+      <div class="hint" style="margin-top:4px;">上传 .css 文件，限制 100KB。用于深度定制主题。</div>
+      <input type="file" id="per-css-input" accept=".css,text/css" style="margin-top:12px; display:none;" onchange="perUploadCss(this)">
+      <div style="display:flex; gap:8px; margin-top:12px;">
+        <button class="btn primary" onclick="document.getElementById('per-css-input').click()">上传 CSS 文件</button>
+        <button class="btn danger" onclick="perRemoveCss()">清除自定义 CSS</button>
+      </div>
+    </div>
+    <div class="card" id="sys-default-bg-card" style="max-width:640px; margin-top:24px; display:none;">
+      <div class="label">默认背景图管理 (仅限所有者)</div>
+      <div class="hint" style="margin-top:4px;">当用户或实例没有单独设置背景时，将显示这些默认图片。上传会自动转换为 WebP 格式。</div>
+      <div style="margin-top:12px; display:flex; gap:8px;">
+        <button class="btn primary" onclick="document.getElementById('sys-bg-panel-input').click()">上传默认面板背景</button>
+        <button class="btn primary" onclick="document.getElementById('sys-bg-inst-input').click()">上传默认实例背景</button>
+      </div>
+      <input type="file" id="sys-bg-panel-input" accept="image/*" style="display:none;" onchange="uploadSysDefaultBg(this, 'panel')">
+      <input type="file" id="sys-bg-inst-input" accept="image/*" style="display:none;" onchange="uploadSysDefaultBg(this, 'instance')">
+    </div>
+  </div>
+</div>
+
+<div id="upload-progress">
+  <div class="up-label">上传中</div>
+  <div class="up-name" id="up-name">-</div>
+  <div class="up-bar-bg"><div class="up-bar-fill" id="up-bar-fill"></div></div>
+  <div class="up-pct" id="up-pct">0%</div>
+</div>
+
+<div id="toast-box"></div>
+
+<div id="reconnect-tip" style="display:none; position:fixed; right:22px; bottom:22px; z-index:10000; background:var(--surface-2); border:1px solid var(--danger); border-left:4px solid var(--danger); border-radius:8px; padding:12px 18px; box-shadow:var(--shadow); color:#fff; font-size:13px; align-items:center; gap:10px;">
+  <div class="spinner" style="width:16px; height:16px; border:2px solid rgba(255,255,255,0.2); border-top-color:var(--danger); border-radius:50%; animation:spin 1s linear infinite;"></div>
+  <span>与服务器断开连接，正在尝试重连...</span>
+</div>
+
+<style>
+@keyframes spin { 100% { transform: rotate(360deg); } }
+</style>
+
+<div id="edit-modal" class="edit-modal">
+  <div class="edit-modal-box">
+    <div class="edit-modal-header"><span id="edit-modal-title">编辑</span><button class="btn" onclick="closeModal()">关闭</button></div>
+    <div class="edit-modal-body" id="edit-modal-body"></div>
+    <div class="edit-modal-footer">
+      <button class="btn primary" id="edit-modal-save" onclick="modalSave()">保存</button>
+      <button class="btn" onclick="closeModal()">取消</button>
+    </div>
+  </div>
+</div>
+
+<div id="file-edit-modal" class="edit-modal">
+  <div class="edit-modal-box" style="max-width:900px;">
+    <div class="edit-modal-header"><span>编辑文件：<b id="file-edit-name">-</b></span><button class="btn" onclick="filesCloseEdit()">关闭</button></div>
+    <input type="hidden" id="file-edit-path">
+    <textarea id="file-edit-content" class="edit-textarea" spellcheck="false"></textarea>
+    <div class="edit-modal-footer">
+      <button class="btn primary" onclick="filesSaveEdit()">保存</button>
+      <button class="btn" onclick="filesCloseEdit()">取消</button>
+    </div>
+  </div>
+</div>
+
+<div id="preview-modal" class="edit-modal">
+  <div class="edit-modal-box" style="max-width:1100px;">
+    <div class="edit-modal-header"><span>预览：<b id="preview-name">-</b></span></div>
+    <div id="preview-body" class="preview-body"></div>
+    <div class="edit-modal-footer">
+      <button class="btn" onclick="filesDownloadFromPreview()">下载</button>
+      <button class="btn" onclick="closePreview()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<div id="ui-modal" class="edit-modal">
+  <div class="edit-modal-box ui-box">
+    <div class="edit-modal-header"><span id="ui-modal-title">提示</span></div>
+    <div class="edit-modal-body" id="ui-modal-body"></div>
+    <div class="edit-modal-footer">
+      <button class="btn" id="ui-modal-cancel">取消</button>
+      <button class="btn primary" id="ui-modal-ok">确定</button>
+    </div>
+  </div>
+</div>
+
+<div id="panel-exit-overlay" class="panel-exit-overlay">
+  <div class="box">
+    <div class="icon">✓</div>
+    <h2>面板已退出</h2>
+    <p>后端进程已关闭，所有轮询已停止。<br>你可以安全地关闭此标签页了。</p>
+    <div class="btns">
+      <button class="btn primary" onclick="window.close()">尝试关闭标签页</button>
+      <button class="btn" onclick="location.reload()">重新连接面板</button>
+    </div>
+  </div>
+</div>
+
+<script src="/js/app-core.js" defer></script>
+<script src="/js/app-plugin-pages.js" defer></script>
+<script src="/js/app-smtp.js" defer></script>
+<script src="/js/app-share.js" defer></script>
+<script src="/js/app-instances.js" defer></script>
+<script src="/js/app-files.js" defer></script>
+<script src="/js/app-pages.js" defer></script>
+<script src="/js/app-serverprops.js" defer></script>
+<script src="/js/app-terminal.js" defer></script>
+<script src="/js/app-installer.js" defer></script>
+<script src="/js/app-misc.js" defer></script>
+<script src="/js/app-velocity.js" defer></script>
+<script src="/js/app-java.js" defer></script>
+<script src="/js/app-remote.js" defer></script>
+</body>
+</html>

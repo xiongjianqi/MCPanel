@@ -1,0 +1,321 @@
+MC PANEL 实例插件开发指南
+
+版本 2.0
+
+本指南只针对实例插件。通用插件机制（plugin.json、MCPlugin 生命周期、PanelPage、API 注册）请看通用开发指南。
+
+目录
+一、实例插件是什么
+二、目录结构
+三、实例上下文能力
+四、监听服务器启停
+五、操作服务器文件
+六、白名单与配置
+七、不能做什么
+八、完整示例：自动白名单
+九、完整示例：跨服传送
+
+一、实例插件是什么
+
+实例插件运行在某个具体 Minecraft 实例的上下文中。
+每个实例有独立的插件目录，各自的插件完全隔离，互不影响。
+实例插件能直接操作该实例的服务器进程。
+
+二、目录结构
+
+实例插件放在：
+instances/<实例ID>/plugins/插件.jar
+
+插件数据目录（getDataFolder 返回）：
+instances/<实例ID>/plugins-data/<插件名>/
+
+共享数据目录（getSharedDataFolder 返回）：
+plugin-shared-data/<插件名>/（跨实例共享）
+
+服务器工作目录：
+instances/<实例ID>/server/
+
+三、实例上下文能力
+
+3.1 发送命令
+
+ctx.sendCommand("say hello");
+ctx.sendCommand("whitelist add Steve");
+ctx.sendCommand("kick Steve 已下线");
+
+3.2 捕获输出
+
+ctx.sendCommandAndCapture("list", 2000, lines -> {
+    // 2000 毫秒内的所有控制台输出
+    for (String line : lines) {
+        ctx.log(line);
+    }
+});
+
+3.3 等待特定输出
+
+ctx.sendCommandAndWait("whitelist list", 3000,
+    line -> line.contains("There are"),
+    lines -> {
+        // 命中条件或超时后回调
+    });
+
+3.4 监听控制台
+
+ctx.onServerOutput(line -> {
+    if (line.contains("joined the game")) {
+        // 玩家进服
+    }
+    if (line.contains("left the game")) {
+        // 玩家退服
+    }
+});
+
+3.5 注册游戏内命令
+
+玩家在聊天里发 !命令名 触发。
+
+ctx.registerCommand("shop", PlayerLevel.USER, (sender, args) -> {
+    ctx.sendCommand("say " + sender + " 打开了商店");
+});
+
+3.6 注册侧边栏页面
+
+只在当前实例可见时用 scope("instance")：
+
+ctx.registerPanelPage(
+    new PanelPage("myshop", "我的商店", "🛒", pctx -> {
+        return "<html>...</html>";
+    })
+    .perm("terminal")
+    .scope("instance")   // 只在进入实例后显示
+    .order(50)
+);
+
+如果要既在节点级也在实例级显示，用 scope("both")。
+
+四、监听服务器启停
+
+最常用的钩子。注意时机：
+
+· onLoad 时服务器可能还没启动
+· 不要在 onLoad 里直接发命令或写服务器文件
+· 先监听状态，启动后再操作
+
+@Override
+public void onLoad(PluginContext ctx) {
+    ctx.onServerStatus(running -> {
+        if (running) {
+            ctx.log("服务器已启动，初始化配置");
+            ctx.sendCommand("say 插件已就绪");
+        }
+    });
+}
+
+五、操作服务器文件
+
+5.1 拿服务器目录
+
+File dataDir = ctx.getDataFolder();
+File instanceDir = dataDir.getParentFile().getParentFile();  // instances/<id>/
+File serverDir = new File(instanceDir, "server");
+
+5.2 读写 server.properties
+
+注意：服务器运行时直接改文件会被覆盖。
+正确做法：先 ctx.sendCommand("stop")，等服务器停止再改，然后让面板重启。
+
+或者干脆通过命令改：
+
+ctx.sendCommand("gamerule keepInventory true");
+
+5.3 读写 world 文件
+
+直接用 File / Files 操作即可，但要注意：
+· 服务器运行时不要改 world
+· 建议在 onServerStatus(false) 回调里操作
+
+六、白名单与配置
+
+推荐用命令，不要直接改文件：
+
+6.1 添加白名单
+
+ctx.sendCommand("whitelist add Steve");
+
+6.2 移除白名单
+
+ctx.sendCommand("whitelist remove Steve");
+
+6.3 查看白名单
+
+ctx.sendCommandAndCapture("whitelist list", 2000, lines -> {
+    for (String line : lines) {
+        ctx.log("白名单: " + line);
+    }
+});
+
+6.4 踢人
+
+ctx.sendCommand("kick Steve");
+
+6.5 广播
+
+ctx.sendCommand("say 服务器将在 5 分钟后重启");
+
+七、不能做什么
+
+实例插件不能操作其他实例。
+即使你能算出别的实例路径，面板层的权限控制也不会绕过。
+
+实例插件不能操作面板全局配置。
+改端口、改用户、改节点配置 → 必须开发面板插件。
+
+实例插件不能监听面板级事件。
+比如用户登录、切换实例、修改配置。只在面板插件里可用。
+
+实例插件不能注册跨实例的侧边栏页面。
+scope 设为 instance 时只在本实例可见。
+即便设为 both，也只是在本实例上下文生效。
+
+八、完整示例：自动白名单
+
+场景：玩家进服时如果不在白名单，自动踢出。
+
+package com.example;
+
+import com.mcpanel.command.PlayerLevel;
+import com.mcpanel.plugin.MCPlugin;
+import com.mcpanel.plugin.PluginContext;
+
+import java.util.HashSet;
+import java.util.Set;
+
+public class AutoWhitelist implements MCPlugin {
+
+    private Set<String> whitelist = new HashSet<>();
+    private PluginContext ctx;
+
+    @Override
+    public void onLoad(PluginContext ctx) {
+        this.ctx = ctx;
+
+        ctx.onServerStatus(running -> {
+            if (running) refreshWhitelist();
+        });
+
+        ctx.onServerOutput(line -> {
+            if (line.contains("joined the game")) {
+                String player = extractName(line);
+                if (player != null && !whitelist.contains(player.toLowerCase())) {
+                    ctx.sendCommand("kick " + player + " 你不在白名单里");
+                }
+            }
+        });
+
+        ctx.registerCommand("wlrefresh", PlayerLevel.HELPER, (sender, args) -> {
+            refreshWhitelist();
+            ctx.sendCommand("say 白名单已刷新，共 " + whitelist.size() + " 人");
+        });
+    }
+
+    private void refreshWhitelist() {
+        ctx.sendCommandAndCapture("whitelist list", 2000, lines -> {
+            whitelist.clear();
+            for (String line : lines) {
+                int idx = line.indexOf("whitelisted");
+                if (idx < 0) continue;
+                int colon = line.indexOf(':', idx);
+                if (colon < 0) continue;
+                for (String name : line.substring(colon + 1).split(",")) {
+                    String t = name.trim();
+                    if (!t.isEmpty()) whitelist.add(t.toLowerCase());
+                }
+            }
+        });
+    }
+
+    private String extractName(String line) {
+        int idx = line.indexOf("joined the game");
+        if (idx < 0) return null;
+        String prefix = line.substring(0, idx).trim();
+        int sp = prefix.lastIndexOf(' ');
+        return sp < 0 ? null : prefix.substring(sp + 1);
+    }
+
+    @Override public String getName() { return "AutoWhitelist"; }
+    @Override public String getId()   { return "autowhitelist"; }
+}
+
+九、完整示例：跨服传送
+
+场景：玩家输入 !server lobby 跳转到 lobby 实例。
+
+package com.example;
+
+import com.mcpanel.command.PlayerLevel;
+import com.mcpanel.instance.InstanceRuntime;
+import com.mcpanel.instance.InstanceRuntimeManager;
+import com.mcpanel.plugin.MCPlugin;
+import com.mcpanel.plugin.PluginContext;
+
+import java.util.*;
+
+public class ServerTransferPlugin implements MCPlugin {
+
+    private PluginContext ctx;
+    private final Map<String, String> aliases = new LinkedHashMap<>();
+    private final String publicHost = "mc.example.com";
+
+    @Override
+    public void onLoad(PluginContext ctx) {
+        this.ctx = ctx;
+
+        aliases.put("lobby", "inst-lobby");
+        aliases.put("survival", "inst-survival");
+
+        ctx.registerCommand("server", PlayerLevel.GUEST, (sender, args) -> {
+            if (args.length == 0 || "list".equalsIgnoreCase(args[0])) {
+                listServers(sender);
+            } else {
+                doTransfer(sender, args[0].toLowerCase(Locale.ROOT));
+            }
+        });
+
+        ctx.log("ServerTransfer 已加载");
+    }
+
+    private void doTransfer(String sender, String alias) {
+        String targetId = aliases.get(alias);
+        if (targetId == null) { reply(sender, "§c未知服务器"); return; }
+        InstanceRuntime target = InstanceRuntimeManager.getInstance().get(targetId);
+        if (target == null || !target.mcServer.isRunning()) {
+            reply(sender, "§c目标未启动"); return;
+        }
+        int port = target.config.getInt("mc.port", 25565);
+        ctx.sendCommand("transfer " + publicHost + " " + port + " " + sender);
+        reply(sender, "§a正在跳转...");
+    }
+
+    private void listServers(String sender) {
+        reply(sender, "§6=== 服务器列表 ===");
+        for (Map.Entry<String, String> e : aliases.entrySet()) {
+            InstanceRuntime rt = InstanceRuntimeManager.getInstance().get(e.getValue());
+            boolean running = rt != null && rt.mcServer.isRunning();
+            reply(sender, (running ? "§a● " : "§c○ ") + "§e" + e.getKey());
+        }
+    }
+
+    private void reply(String sender, String msg) {
+        ctx.log(msg);
+        if (!"web".equals(sender) && !"console".equals(sender)) {
+            String esc = msg.replace("\\", "\\\\").replace("\"", "\\\"");
+            ctx.sendCommand("tellraw " + sender + " {\"text\":\"" + esc + "\"}");
+        }
+    }
+
+    @Override public String getName() { return "ServerTransfer"; }
+    @Override public String getId()   { return "srv"; }
+}
+
+文档结束。
