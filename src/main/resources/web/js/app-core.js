@@ -4,11 +4,9 @@ var dashPollTimer = null;
 var dashUptimeTimer = null;
 var instanceListTimer = null;
 var currentTab = 'instances';
-var accessibleNodeCount = -1;
 var currentInstanceType = 'mc';
 var chartRange = 'live';
 
-var currentNodeId = 'local';
 var currentInstanceId = '';
 
 (function patchFetch() {
@@ -236,7 +234,6 @@ function hasPerm(p) {
 }
 
 function updateSidebarVisibility() {
-  var inNode = true;
   var inInstance = !!currentInstanceId;
 
   document.querySelectorAll('.sidebar a[data-tab]').forEach(function (a) {
@@ -284,6 +281,10 @@ function updateSidebarVisibility() {
 
     if (t === 'java') {
       a.style.display = (inInstance && (hasPerm('java') || hasPerm('config'))) ? '' : 'none';
+      return;
+    }
+    if (t === 'velocitycfg') {
+      a.style.display = (inInstance && currentInstanceType === 'velocity' && hasPerm('config')) ? '' : 'none';
       return;
     }
     if (t === 'installer') {
@@ -482,6 +483,8 @@ function switchTab(tab) {
         if (typeof filesInitPath === 'function') filesInitPath(); 
         if (typeof filesRefresh === 'function') filesRefresh(); 
     }
+    if (tab === 'installer' && typeof renderInstallerCards === 'function') renderInstallerCards();
+    if (tab === 'velocitycfg' && typeof velRefresh === 'function') velRefresh();
     if (tab === 'backup' && hasPerm('backup') && typeof backupRefresh === 'function') backupRefresh();
     if (tab === 'config' && hasPerm('config') && typeof cfgRefresh === 'function') cfgRefresh();
     if (tab === 'serverprops' && hasPerm('config') && typeof spRefresh === 'function') spRefresh();

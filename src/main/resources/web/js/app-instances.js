@@ -20,10 +20,6 @@ function mountInstanceTypeDropdown(hostId, inputId, initial) {
   host.appendChild(dd);
 }
 
-function panelPluginsShow() {
-  switchTab('panel-plugins');
-}
-
 function renderPanelPluginsPage() {
   var container = document.getElementById('panel-plugins-content');
   if (!container) return;
@@ -83,8 +79,8 @@ function panelPluginsRefresh() {
     var tbody = document.getElementById('panel-plugins-list');
     if (!tbody) return;
     tbody.innerHTML = '';
-    if (!list || list.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="5" class="empty">暂无面板插件</td></tr>';
+    if (!Array.isArray(list) || list.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="empty">' + ((list && list.error) ? escapeHtml(list.error) : '暂无面板插件') + '</td></tr>';
       return;
     }
     list.forEach(function (p) {
@@ -520,8 +516,8 @@ function pluginsRefresh() {
     var tbody = document.getElementById('plugins-list');
     if (!tbody) return;
     tbody.innerHTML = '';
-    if (!list || list.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" class="empty">暂无实例插件</td></tr>';
+    if (!Array.isArray(list) || list.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty">' + ((list && list.error) ? escapeHtml(list.error) : '暂无实例插件') + '</td></tr>';
       return;
     }
     list.forEach(p => {

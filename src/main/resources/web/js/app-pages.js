@@ -6,8 +6,8 @@ function backupRefresh() {
     if (panelExited) return;
     var tbody = document.getElementById('backup-list');
     tbody.innerHTML = '';
-    if (!list || list.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="4" class="empty">暂无备份</td></tr>';
+    if (!Array.isArray(list) || list.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" class="empty">' + ((list && list.error) ? escapeHtml(list.error) : '暂无备份') + '</td></tr>';
       return;
     }
     list.sort(function (a, b) { return (b.name || '').localeCompare(a.name || ''); });
@@ -482,8 +482,8 @@ function usersRefresh() {
     if (panelExited) return;
     var tbody = document.getElementById('users-list');
     tbody.innerHTML = '';
-    if (!list || list.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="4" class="empty">暂无子用户</td></tr>';
+    if (!Array.isArray(list) || list.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" class="empty">' + ((list && list.error) ? escapeHtml(list.error) : '暂无子用户') + '</td></tr>';
       return;
     }
     list.forEach(function (u) {

@@ -42,7 +42,6 @@ function ensurePluginFrame(tabId) {
   iframe.sandbox = 'allow-scripts allow-forms allow-popups';
   var qs = '?id=' + encodeURIComponent(pageId);
   if (currentInstanceId) qs += '&instance=' + encodeURIComponent(currentInstanceId);
-  if (currentNodeId) qs += '&node=' + encodeURIComponent(currentNodeId);
   iframe.src = '/api/plugin-pages/render' + qs;
   container.appendChild(iframe);
   container.dataset.loaded = '1';

@@ -171,8 +171,10 @@ public class WebServer {
             String currentUser = auth.getCurrentUser(exchange);
 
             if (path.equals("/ws/panel-log")) {
+                // 侧边栏对 panel_log 或 config 权限都会显示入口，这里保持一致
                 if (!UserStore.getInstance().isMaster(currentUser)
-                        && !UserStore.getInstance().hasPermission(currentUser, "config")) {
+                        && !UserStore.getInstance().hasPermission(currentUser, "config")
+                        && !UserStore.getInstance().hasPermission(currentUser, "panel_log")) {
                     exchange.setStatusCode(403);
                     exchange.getResponseSender().send("Forbidden");
                     return;
@@ -218,6 +220,16 @@ public class WebServer {
                 return;
             }
 
+            if (path.startsWith("/api/panel/plugins")) {
+                if (!auth.hasPermission(exchange, "plugins")) {
+                    exchange.setStatusCode(403);
+                    exchange.getResponseSender().send("{\"error\":\"no permission\"}");
+                    return;
+                }
+                new PluginHandler(com.mcpanel.plugin.PanelPluginManager.getInstance().getManager(),
+                        globalConfig, auth).handle(exchange);
+                return;
+            }
             if (path.startsWith("/api/terminal/") || path.startsWith("/api/panel/")) {
                 if (rt == null) {
                     exchange.setStatusCode(400);
@@ -240,16 +252,6 @@ public class WebServer {
             if (path.startsWith("/api/plugin-pages")) { new PluginPageHandler(auth).handle(exchange); return; }
             if (path.startsWith("/api/plugin-api/")) { new PluginApiHandler(auth).handle(exchange); return; }
 
-            if (path.startsWith("/api/panel/plugins")) {
-                if (!auth.hasPermission(exchange, "plugins")) {
-                    exchange.setStatusCode(403);
-                    exchange.getResponseSender().send("{\"error\":\"no permission\"}");
-                    return;
-                }
-                new PluginHandler(com.mcpanel.plugin.PanelPluginManager.getInstance().getManager(),
-                        globalConfig, auth).handle(exchange);
-                return;
-            }
 
             if (path.startsWith("/api/instances")) { new InstanceHandler(runtimeManager, auth).handle(exchange); return; }
             if (path.startsWith("/api/remote")) { new RemoteHandler(globalConfig, runtimeManager, auth).handle(exchange); return; }

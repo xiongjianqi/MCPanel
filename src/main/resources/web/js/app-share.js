@@ -4,8 +4,8 @@ function shareRefresh() {
     var tbody = document.getElementById('share-list');
     if (!tbody) return;
     tbody.innerHTML = '';
-    if (!list || list.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无分享</td></tr>';
+    if (!Array.isArray(list) || list.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty">' + ((list && list.error) ? escapeHtml(list.error) : '暂无分享') + '</td></tr>';
       return;
     }
     list.forEach(s => {
@@ -29,7 +29,6 @@ function shareRefresh() {
       } else {
           td3.textContent = s.hasPassword ? '🔒 有密码' : '公开'; 
       }
-      var td4 = document.createElement('td'); td4.textContent = s.nodeId || 'local';
       var td5 = document.createElement('td'); td5.className = 'dim'; td5.textContent = new Date(s.createdAt).toLocaleString();
       var td6 = document.createElement('td'); td6.className = 'dim'; td6.textContent = s.createdBy || '未知';
       
@@ -46,7 +45,7 @@ function shareRefresh() {
       };
       td7.appendChild(b1);
       
-      tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3); tr.appendChild(td4); tr.appendChild(td5); tr.appendChild(td6); tr.appendChild(td7);
+      tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3); tr.appendChild(td5); tr.appendChild(td6); tr.appendChild(td7);
       tbody.appendChild(tr);
     });
   }).catch(() => {});
@@ -58,8 +57,8 @@ function shareRefreshLogs() {
     var tbody = document.getElementById('share-logs');
     if (!tbody) return;
     tbody.innerHTML = '';
-    if (!list || list.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="5" class="empty">暂无记录</td></tr>';
+    if (!Array.isArray(list) || list.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="empty">' + ((list && list.error) ? escapeHtml(list.error) : '暂无记录') + '</td></tr>';
       return;
     }
     list.forEach(l => {
