@@ -1,3 +1,4 @@
+.ssh/
 # 构建产物
 target/
 *.class
