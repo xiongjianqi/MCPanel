@@ -113,7 +113,9 @@ public class InstallerManager {
         }
 
         try (Stream<Path> stream = Files.list(serverDir.toPath())) {
-            for (Path p : stream.toList()) {
+            // 用 collect 而不是 Stream.toList()，保持对 Java 11 的兼容
+            java.util.List<Path> children = stream.collect(java.util.stream.Collectors.toList());
+            for (Path p : children) {
                 if (keepWorld && p.getFileName().toString().equals("world")) continue;
                 deleteRecursively(p);
             }
