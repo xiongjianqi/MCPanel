@@ -27,7 +27,17 @@ jobs:
           cache: maven
 
       - name: mvn package
-        run: mvn -B -DskipTests package
+        shell: bash
+        run: |
+          set +e
+          mvn -B -DskipTests package 2>&1 | tee build.log
+          rc=${PIPESTATUS[0]}
+          if [ $rc -ne 0 ]; then
+            msg=$(grep -E '^\[ERROR\]' build.log | head -6 | tr '\n' ' ' | cut -c1-900)
+            [ -z "$msg" ] && msg=$(tail -c 900 build.log | tr '\n' ' ')
+            echo "::error title=mvn package failed::$msg"
+            exit $rc
+          fi
 
       - name: 上传 jar 产物
         uses: actions/upload-artifact@v4
