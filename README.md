@@ -1,58 +1,75 @@
-这是一个轻量级的 Minecraft 服务端管理面板。支持在 Docker 内运行，且自带插件系统。（至少有......对吧？）
+# MCPanel
 
+一个轻量级的 Minecraft 服务端管理面板：打包成一个 jar，浏览器打开就能管实例、看终端、改文件、做备份、装插件。
 
-语言：Java 8，HTML和JavaScript
+- 语言：Java 8（后端）+ 原生 HTML / JavaScript（前端，不需要构建步骤）
+- 存储：不依赖数据库，全部落在本地 JSON 文件里
+- 部署：直接 `java -jar` 跑，也可以放进 Docker
 
-使用方法：
+## 功能
 
-你需要先安装java，我们的面板目前由java 8编译，所以你需要下载java 8及以上的java版本  
-如果你是Windows，你可以从[java.com](https://java.com)下载  
-如果你是Linux，你可以运行以下命令安装java：  
-Debian & Ubuntu：
+| 模块 | 说明 |
+| --- | --- |
+| 实例管理 | 一个面板管理多个服务端实例，分别指定 Java、端口和启动命令 |
+| 终端 | WebSocket 实时日志 + 命令发送，支持启动 / 关闭 / 重启 / 终止，电脑端日志区高度自适应窗口 |
+| 仪表盘 | CPU / 内存 / 磁盘 / 进出流量，实时曲线与本日、本周历史曲线 |
+| 文件管理 | 浏览、上传、下载、在线编辑、压缩/解压、批量操作 |
+| 备份 | 一键备份与回滚 |
+| Java 环境 | 安装并切换不同版本的 Java |
+| 安装器 | Paper / Purpur / Fabric / Forge / NeoForge / 原版 / Velocity 等一键安装 |
+| 插件系统 | 面板插件 + 实例插件，自带事件总线和 Web 路由 |
+| 用户与权限 | 主账号 + 子账号，按实例和功能授权，支持 2FA（TOTP / 邮箱验证码）与找回密码 |
+| 邮件 | SMTP 配置与测试发送，用于登录验证、绑定邮箱、找回密码、注册邀请 |
+| 其他 | 分享链接、远程节点、面板日志、配置管理 |
 
-```bash
-sudo apt install openjdk-8-jdk
-```
+## 环境要求
 
-然后你从Releases把jar文件下载下来之后，然后运行以下命令运行：
+- Java 8 及以上（编译目标 1.8）
+- 编译需要 Maven 3
+- 图形验证码用到 JDK 的 AWT（`java.desktop`），启动时会自动设置 `java.awt.headless=true`；验证码字体由 `easy-captcha` 自带，不用额外装系统字体
+
+## 快速开始
+
+从 Releases 下载 `mc-panel.jar`，放进一个空目录后运行：
 
 ```bash
 java -jar mc-panel.jar
 ```
 
-如果你想自己编译的话，你从Code页面把代码下载下来之后，解压到一个文件夹里面  
-然后准备java环境，和上面的一样，但是不同的是，你需要下载Maven  
-如果你是Windows的话，你去这里下载：[Maven下载链接](https://maven.apache.org/download.cgi)  
-关于怎么配置你可以去网上搜索"怎么配置Maven"  
-Linux的话相对简单，只要在终端输入以下命令  
-Debian & Ubuntu：
+首次启动会在当前目录生成配置文件、`users.json`、`users.key` 等，并在控制台打印初始管理员账号和密码，登录后请第一时间修改。
+
+## 自己编译
 
 ```bash
-sudo apt install maven
-```
-
-然后打开你们操作系统的终端，进入你解压后的mcpanel源代码文件夹，输入以下命令
-
-```bash
+git clone https://github.com/xiongjianqi/MCPanel.git
+cd MCPanel
 mvn package
 ```
 
-然后它就会自己进行编译和打包了  
-等它编译完成之后，你的目录下会出现一个target文件夹，进入之后，里面的mc-panel.jar就是本体了  
-然后把这个jar放到一个空文件夹中，用上面的命令运行即可  
+产物是 `target/mc-panel.jar`，把它放进空目录再按上面的命令运行即可。
 
-怎么连接：
+## 访问面板
 
-本地连接的话，打开你的浏览器，输入localhost:8080即可，如果你是局域网连接的话，就是你的局域网IP加上:8080  
-如果你想要在家外面，也就是让别人也来访问的话，你需要一个公网IP，或者内网穿透，内网穿透的话把映射设在8080即可  
-如果你是云服务器，那就是最简单的，运行jar之后，你只要在浏览器输入你的公网IP后面加上8080即可  
-具体的使用的话，我认为我的UI是通俗易懂的，嘿嘿  
+- 本机：`http://localhost:8080`
+- 局域网：`http://<局域网IP>:8080`
+- 公网：公网 IP，或者用内网穿透把 8080 映射出去
 
-面板插件和实例插件的开发的话，你可以查看源代码中的src/main/resources/web，里面有两个txt文件，里面是内置的插件开发教程，AI写的（但是这个README.md是我自己写的，真的！），如果你想开发插件可以看看这个  
-未来我们会尝试支持mcdreforged插件，emmmmmm虽然不知道得到什么时候
+## 插件开发
 
-开源协议：MIT License  
-不遵守这个我把你头剁下来qwq（假的）
+插件开发文档就在源码里：
 
+- `src/main/resources/web/plugin-dev-guide.txt`（面板插件）
+- `src/main/resources/web/instance-plugin-dev-guide.txt`（实例插件）
+
+## 最近的改动
+
+- **电脑端体验**：终端日志区按可视区域自适应，窗口缩放、切换页面、展开「终端设置」时都会重新计算；电脑端监控图表也加高了
+- **找回密码**：只认账号**已绑定**的邮箱，页面只显示脱敏邮箱（如 `ab***@qq.com`），不再接受随手填的地址；主账号也支持邮箱找回
+- **人机验证**：登录页「发送邮箱验证码」和找回页「发送验证码」都必须先通过图形验证码；改用 [`easy-captcha`](https://github.com/whvcse/EasyCaptcha) 库生成，一次性、5 分钟有效
+- **监控曲线**：纵轴按数据自适应，空数据和单点不再被画成一条横贯全宽的平线
+
+## 开源协议
+
+MIT License，见 [LICENSE](LICENSE)。
 
 ---- xiongjianqi

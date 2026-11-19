@@ -1,0 +1,18 @@
+# 构建产物
+target/
+*.class
+
+# 运行时生成的文件（含密钥，切勿提交）
+data/
+users.json
+users.key
+sessions.json
+smtp.json
+*.log
+logs/
+
+# 编辑器
+.idea/
+.vscode/
+*.iml
+.DS_Store
