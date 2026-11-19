@@ -2,7 +2,7 @@
 
 一个轻量级的 Minecraft 服务端管理面板：打包成一个 jar，浏览器打开就能管实例、看终端、改文件、做备份、装插件。
 
-- 语言：Java 8（后端）+ 原生 HTML / JavaScript（前端，不需要构建步骤）
+- 语言：Java 11（后端）+ 原生 HTML / JavaScript（前端，不需要构建步骤）
 - 存储：不依赖数据库，全部落在本地 JSON 文件里
 - 部署：直接 `java -jar` 跑，也可以放进 Docker
 
@@ -24,7 +24,7 @@
 
 ## 环境要求
 
-- Java 8 及以上（编译目标 1.8）
+- Java 11 及以上（代码用到 `java.net.http`，编译目标 11）
 - 编译需要 Maven 3
 - 图形验证码用到 JDK 的 AWT（`java.desktop`），启动时会自动设置 `java.awt.headless=true`；验证码字体由 `easy-captcha` 自带，不用额外装系统字体
 
