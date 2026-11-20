@@ -1,17 +1,13 @@
 # MCPanel
 
-一个轻量级的 Minecraft 服务端管理面板：打包成一个 jar，浏览器打开就能管实例、看终端、改文件、做备份、装插件。
-
-- 语言：Java 11（后端）+ 原生 HTML / JavaScript（前端，不需要构建步骤）
-- 存储：不依赖数据库，全部落在本地 JSON 文件里
-- 部署：直接 `java -jar` 跑，也可以放进 Docker
+轻量级 Minecraft 服务端管理面板：单个 jar，浏览器里管理实例、终端、文件、备份和插件。
 
 ## 功能
 
 | 模块 | 说明 |
 | --- | --- |
 | 实例管理 | 一个面板管理多个服务端实例，分别指定 Java、端口和启动命令 |
-| 终端 | WebSocket 实时日志 + 命令发送，支持启动 / 关闭 / 重启 / 终止，电脑端日志区高度自适应窗口 |
+| 终端 | WebSocket 实时日志 + 命令发送，支持启动 / 关闭 / 重启 / 终止 |
 | 仪表盘 | CPU / 内存 / 磁盘 / 进出流量，实时曲线与本日、本周历史曲线 |
 | 文件管理 | 浏览、上传、下载、在线编辑、压缩/解压、批量操作 |
 | 备份 | 一键备份与回滚 |
@@ -24,22 +20,9 @@
 
 ## 环境要求
 
-- Java 11 及以上（代码用到 `java.net.http`，编译目标 11）
-- 编译需要 Maven 3
-- 图形验证码用到 JDK 的 AWT（`java.desktop`），启动时会自动设置 `java.awt.headless=true`；验证码字体由 `easy-captcha` 自带，不用额外装系统字体
-
-### 小内存 / 容器部署
-
-- Undertow 默认 worker 线程数是「CPU×8」，面板还额外跑了一个分享服务，两者叠加在大核数机器上可能上百线程；本面板已收敛为 IO 4 + Worker 24（分享服务 2 + 8），可用 `web.io.threads` / `web.worker.threads` 覆盖
-- 面板自身堆给 `-Xmx256M` ~ `-Xmx512M` 就够，实例内存单独在实例设置里配；只有 512MB 内存的机器建议：
-
-  ```bash
-  java -Xmx256M -Xss512k -jar mc-panel.jar
-  ```
-- 出现 `unable to create native thread: possibly out of memory or process/resource limits reached` 时，先查这几处：
-  - `ulimit -u`（用户可创建进程/线程数）
-  - systemd 服务的 `TasksMax`，或容器 `--pids-limit`
-  - 容器/虚拟机的总内存：每个线程约 1MB 栈，线程多 + 堆大时容易先撞内存上限
+- Java 11 及以上，编译需要 Maven 3
+- 图形验证码用 `easy-captcha`，自带字体，启动时自动 `java.awt.headless=true`
+- 线程数可用 `web.io.threads` / `web.worker.threads` 调整
 
 ## 快速开始
 
@@ -49,7 +32,7 @@
 java -jar mc-panel.jar
 ```
 
-首次启动会在当前目录生成配置文件、`users.json`、`users.key` 等，并在控制台打印初始管理员账号和密码，登录后请第一时间修改。
+首次启动会在当前目录生成配置、`users.json`、`users.key` 等，并在控制台打印初始管理员账号和密码。
 
 ## 自己编译
 
@@ -59,33 +42,16 @@ cd MCPanel
 mvn package
 ```
 
-产物是 `target/mc-panel.jar`，把它放进空目录再按上面的命令运行即可。
+产物是 `target/mc-panel.jar`。
 
 ## 访问面板
 
-- 本机：`http://localhost:8080`
-- 局域网：`http://<局域网IP>:8080`
-- 公网：公网 IP，或者用内网穿透把 8080 映射出去
+浏览器打开 `http://localhost:8080`，局域网用本机 IP，公网直接访问或用端口映射。
 
 ## 插件开发
 
-插件开发文档就在源码里：
-
 - `src/main/resources/web/plugin-dev-guide.txt`（面板插件）
 - `src/main/resources/web/instance-plugin-dev-guide.txt`（实例插件）
-
-## 最近的改动
-
-- **电脑端体验**：终端日志区按可视区域自适应，窗口缩放、切换页面、展开「终端设置」时都会重新计算；电脑端监控图表也加高了
-- **找回密码**：只认账号**已绑定**的邮箱，页面只显示脱敏邮箱（如 `ab***@qq.com`），不再接受随手填的地址；主账号也支持邮箱找回
-- **人机验证**：登录页「发送邮箱验证码」和找回页「发送验证码」都必须先通过图形验证码；改用 [`easy-captcha`](https://github.com/whvcse/EasyCaptcha) 库生成，一次性、5 分钟有效
-- **监控曲线**：纵轴按数据自适应，空数据和单点不再被画成一条横贯全宽的平线
-
-## 开发约定
-
-- **能用成熟库就别手写**：比如图形验证码直接用 `easy-captcha`，不再自己拼图片/字体
-- 新增依赖统一写进 `pom.xml`，构建时由 Maven 拉取，不要要求使用者手动放 jar
-- 前端保持原生 JS + 无构建步骤，改完刷新页面即可
 
 ## 开源协议
 
