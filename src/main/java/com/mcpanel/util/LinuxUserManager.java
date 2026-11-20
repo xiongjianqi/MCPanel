@@ -134,7 +134,8 @@ public class LinuxUserManager {
                 runCmd(3, "chmod", "600", "/workspace/mc-panel.jar");
                 
                 // 数据目录
-                runCmd(3, "chmod", "700", "/workspace/data");
+                // 711：实例用户可穿越到自己的 pid 目录，但列不出 data 下的内容
+                runCmd(3, "chmod", "711", "/workspace/data");
                 runCmd(3, "chmod", "700", "/workspace/runtime");
             }
             

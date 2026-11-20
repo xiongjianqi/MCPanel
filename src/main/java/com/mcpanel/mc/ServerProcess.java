@@ -37,7 +37,7 @@ public class ServerProcess {
     public volatile boolean needsEula = false;
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final long STARTUP_TIMEOUT_MS = 90_000;
+    private static final long STARTUP_TIMEOUT_MS = 180_000;
 
     private static final Pattern CHAT_PATTERN = Pattern.compile(
             "^\\[[^\\]]+\\] \\[[^\\]]+/INFO\\]: (?:\\[[^\\]]+\\] )*<([^>]+)> (.*)$");
@@ -422,11 +422,21 @@ public class ServerProcess {
                 }
 
                 File runDir = getRunDir();
+                File runBase = runDir.getParentFile();                       // .../data/run
+                File dataDir = (runBase != null) ? runBase.getParentFile() : null; // .../data
                 try {
+                    // 实例用户要能穿越 data 目录，才能写 shell.pid；
+                    // 这里给 711（可穿越、不可列出），不破坏原有的目录隐藏效果。
+                    if (dataDir != null) {
+                        new ProcessBuilder("chown", "root:root", dataDir.getAbsolutePath()).start().waitFor(2, TimeUnit.SECONDS);
+                        new ProcessBuilder("chmod", "711", dataDir.getAbsolutePath()).start().waitFor(2, TimeUnit.SECONDS);
+                    }
+                    if (runBase != null) {
+                        new ProcessBuilder("chown", "root:root", runBase.getAbsolutePath()).start().waitFor(2, TimeUnit.SECONDS);
+                        new ProcessBuilder("chmod", "711", runBase.getAbsolutePath()).start().waitFor(2, TimeUnit.SECONDS);
+                    }
                     new ProcessBuilder("chown", "root:root", runDir.getAbsolutePath()).start().waitFor(2, TimeUnit.SECONDS);
                     new ProcessBuilder("chmod", "755", runDir.getAbsolutePath()).start().waitFor(2, TimeUnit.SECONDS);
-                    new ProcessBuilder("chown", "root:root", runDir.getParentFile().getAbsolutePath()).start().waitFor(2, TimeUnit.SECONDS);
-                    new ProcessBuilder("chmod", "755", runDir.getParentFile().getAbsolutePath()).start().waitFor(2, TimeUnit.SECONDS);
                 } catch (Exception ignored) {}
 
                 // 预创建 PID 文件并赋权给实例用户（让其可以写入，但无法删除）
