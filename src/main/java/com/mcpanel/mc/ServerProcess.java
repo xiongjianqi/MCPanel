@@ -193,7 +193,26 @@ public class ServerProcess {
         start();
     }
 
-    public synchronized void start() {
+    // 启动过程包含 pkill / chown / su 等等待型操作，既不能把调用方线程（尤其是 Undertow IO 线程）
+    // 堵住，也不能整个方法持有对象锁，否则 dashboard、终端等请求会一起排队造成页面卡死。
+    private final java.util.concurrent.atomic.AtomicBoolean startInFlight =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    public void start() {
+        if (!startInFlight.compareAndSet(false, true)) return; // 已经在启动，直接忽略重复请求
+        try {
+            doStart();
+        } catch (Throwable t) {
+            broadcast("[Panel] ✗ 启动异常: " + t.getClass().getSimpleName()
+                    + (t.getMessage() == null ? "" : " - " + t.getMessage()));
+            setState(false, false);
+            notifyStateChange();
+        } finally {
+            startInFlight.set(false);
+        }
+    }
+
+    private void doStart() {
         if (running || starting || installing) return;
 
         if (!isVelocity && needsEula) {
@@ -377,10 +396,18 @@ public class ServerProcess {
             ProcessBuilder pb = new ProcessBuilder(command);
 
             if (useSu) {
-                try {
-                    new ProcessBuilder("pkill", "-9", "-u", inst.sysUser)
-                            .start().waitFor(2, TimeUnit.SECONDS);
-                } catch (Exception ignored) {}
+                // 安全保护：绝不能对 root 或面板自身所在的用户执行 pkill，
+                // 否则会把面板/系统进程一起杀掉（表现为页面卡死、实例起不来）。
+                boolean safeToKill = !"root".equals(inst.sysUser)
+                        && !inst.sysUser.equals(System.getProperty("user.name"));
+                if (safeToKill) {
+                    try {
+                        new ProcessBuilder("pkill", "-9", "-u", inst.sysUser)
+                                .start().waitFor(2, TimeUnit.SECONDS);
+                    } catch (Exception ignored) {}
+                } else {
+                    broadcast("[Panel] ⚠ 实例用户与面板用户相同，已跳过启动前的进程清理");
+                }
 
                 File runDir = getRunDir();
                 try {

@@ -237,15 +237,8 @@ public class TerminalHandler {
 
                 if (mc.needsEula) {
                     if (cmd.equalsIgnoreCase("Y")) {
-                        mc.needsEula = false;
-                        File serverDir = config.resolve(config.get("mc.server.dir", "server"));
-                        File eulaFile = new File(serverDir, "eula.txt");
-                        try {
-                            Files.write(eulaFile.toPath(), "eula=true".getBytes(StandardCharsets.UTF_8));
-                            addEntry("[Panel] ✓ 已同意 EULA，正在重新启动服务端...");
-                            mc.notifyStateChange();
-                            mc.start();
-                        } catch (Exception e) { addEntry("[Panel] ✗ 写入 eula.txt 失败"); mc.notifyStateChange(); }
+                        // 不能在这个（IO 线程）回调里直接启动：启动里有 chown/su/pkill 等阻塞操作
+                        agreeEulaAndStartAsync();
                         return;
                     }
                     if (cmd.equalsIgnoreCase("N")) {
@@ -371,6 +364,32 @@ public class TerminalHandler {
         ex.getResponseSender().send(MAPPER.writeValueAsString(m));
     }
 
+    // 同意 EULA 并异步启动：写文件和启动都放到独立线程，避免阻塞 Undertow 的 IO/Worker 线程
+    private void agreeEulaAndStartAsync() {
+        String dirKey = "velocity".equals(config.get("_instance.type", "mc")) ? "velocity.server.dir" : "mc.server.dir";
+        File serverDir = config.resolve(config.get(dirKey, "server"));
+        try {
+            if (!serverDir.exists()) serverDir.mkdirs();
+            java.nio.file.Files.write(new File(serverDir, "eula.txt").toPath(),
+                    "eula=true".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } catch (Exception e) {
+            addEntry("[Panel] ✗ 写入 eula.txt 失败: " + e.getMessage());
+            mc.notifyStateChange();
+            return;
+        }
+        mc.needsEula = false;
+        mc.notifyStateChange();
+        addEntry("[Panel] ✓ 已同意 EULA，正在启动服务端...");
+        new Thread(() -> {
+            try {
+                mc.start();
+            } catch (Throwable t) {
+                addEntry("[Panel] ✗ 启动失败: " + (t.getMessage() == null ? t.toString() : t.getMessage()));
+                mc.notifyStateChange();
+            }
+        }, "eula-start").start();
+    }
+
     private void handleAction(HttpServerExchange ex, String body, String currentUser) throws Exception {
         if (mc.isInstalling()) {
             ex.setStatusCode(409); ex.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json");
@@ -382,6 +401,9 @@ public class TerminalHandler {
         String action = p.getOrDefault("action", "");
 
         switch (action) {
+            case "eula":
+                agreeEulaAndStartAsync();
+                break;
             case "start":
                 if (mc.isRunning()) {
                     ex.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json");

@@ -178,9 +178,22 @@ function termSend() {
 })();
 
 function termAgreeEulaAndStart() {
-  if (!termReady || !ws || ws.readyState !== WebSocket.OPEN) { toast('WebSocket 未连接，请稍后重试', 'err'); return; }
   toast('正在同意 EULA 并启动...');
-  ws.send('Y');
+  updatePowerButton(false, true, false, false); // 先切到“启动中”，避免连点
+  postApi('/api/terminal/action', { action: 'eula' }).then(function (r) {
+    if (r && r.error) {
+      toast(r.error, 'err');
+      updatePowerButton(false, false, true, false);
+    }
+  }).catch(function () {
+    // 接口不可用时退回 WebSocket 方式
+    if (termReady && ws && ws.readyState === WebSocket.OPEN) {
+      try { ws.send('Y'); } catch (e) {}
+    } else {
+      toast('启动请求失败，请刷新页面重试', 'err');
+      updatePowerButton(false, false, true, false);
+    }
+  });
 }
 
 function termToggle() {
