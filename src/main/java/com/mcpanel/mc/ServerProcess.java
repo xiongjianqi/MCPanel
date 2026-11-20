@@ -395,6 +395,18 @@ public class ServerProcess {
 
             ProcessBuilder pb = new ProcessBuilder(command);
 
+            // su 预检：如果用户只在 /etc/passwd 里而没有 /etc/shadow 条目，su 会报
+            // "Authentication service cannot retrieve authentication info" 并立刻退出，
+            // 表现为点了启动但实例起不来。先尝试补条目，仍然不行就降级为直接启动。
+            if (useSu && !LinuxUserManager.canSuTo(inst.sysUser)) {
+                LinuxUserManager.ensureShadowEntry(inst.sysUser);
+                if (!LinuxUserManager.canSuTo(inst.sysUser)) {
+                    broadcast("[Panel] ⚠ 无法切换到实例用户 " + inst.sysUser
+                            + "（su 认证失败，通常是 /etc/shadow 缺少该用户），本次以面板用户直接启动，用户隔离已关闭");
+                    useSu = false;
+                }
+            }
+
             if (useSu) {
                 // 安全保护：绝不能对 root 或面板自身所在的用户执行 pkill，
                 // 否则会把面板/系统进程一起杀掉（表现为页面卡死、实例起不来）。

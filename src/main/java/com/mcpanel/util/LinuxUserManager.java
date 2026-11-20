@@ -237,6 +237,60 @@ public class LinuxUserManager {
         return "mc_" + safeId;
     }
 
+    // su 预检：用非登录 shell 试一次，避免 .bashrc 里的 trap 影响退出码。
+    // 返回 false 通常意味着 /etc/shadow 里没有这个用户（su 会报
+    // "Authentication service cannot retrieve authentication info"）。
+    public static boolean canSuTo(String username) {
+        if (username == null || username.isEmpty()) return false;
+        String su = suPath != null ? suPath : findSu();
+        if (su == null) return false;
+        try {
+            Process p = new ProcessBuilder(su, "-s", "/bin/sh", username, "-c", "true")
+                    .redirectErrorStream(true).start();
+            final StringBuilder out = new StringBuilder();
+            Thread drain = new Thread(() -> {
+                try (BufferedReader br = new BufferedReader(
+                        new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        if (out.length() < 512) out.append(line).append('\n');
+                    }
+                } catch (Exception ignored) {}
+            }, "su-check");
+            drain.setDaemon(true);
+            drain.start();
+            if (!p.waitFor(3, TimeUnit.SECONDS)) { p.destroyForcibly(); return false; }
+            if (p.exitValue() != 0) {
+                System.err.println("[LinuxUserManager] su 到 " + username + " 失败: " + out.toString().trim());
+                return false;
+            }
+            return true;
+        } catch (Exception e) {
+            System.err.println("[LinuxUserManager] su 预检异常: " + e.getMessage());
+            return false;
+        }
+    }
+
+    // 用户可能只写进了 /etc/passwd 而没有 /etc/shadow 条目，导致 su 无法获取认证信息。
+    // 这里补一条锁定密码的 shadow 记录，root 执行 su 不需要密码，能正常切换。
+    public static void ensureShadowEntry(String username) {
+        if (username == null || username.isEmpty()) return;
+        try {
+            File shadow = new File("/etc/shadow");
+            if (!shadow.exists()) return;
+            List<String> lines = Files.readAllLines(shadow.toPath(), StandardCharsets.UTF_8);
+            for (String line : lines) {
+                if (line.startsWith(username + ":")) return;
+            }
+            long days = System.currentTimeMillis() / 86400000L;
+            lines.add(username + ":!:" + days + ":0:99999:7:::");
+            Files.write(shadow.toPath(), lines, StandardCharsets.UTF_8);
+            System.err.println("[LinuxUserManager] 已补写 /etc/shadow 条目: " + username);
+        } catch (Exception e) {
+            System.err.println("[LinuxUserManager] 补写 shadow 失败: " + e.getMessage());
+        }
+    }
+
     public static boolean isUserReady(Instance inst) {
         if (!isSupported || inst == null) return false;
         if (inst.sysUser == null || inst.sysUser.isEmpty()) return false;
@@ -300,6 +354,9 @@ public class LinuxUserManager {
                 runCmd(2, "usermod", "-s", shell, username);
             }
             runCmd(2, "usermod", "-U", username);
+            // 确保 /etc/shadow 里有这个用户，否则 su 会报
+            // "Authentication service cannot retrieve authentication info"
+            ensureShadowEntry(username);
 
             String hash = null;
             try {
