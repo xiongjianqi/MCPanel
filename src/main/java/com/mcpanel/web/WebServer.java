@@ -52,7 +52,7 @@ public class WebServer {
             }
         }
 
-        // 手机/小内存机器上线程数必须收敛：Undertow 默认 worker = CPU*8，两个服务叠加能到上百个线程，
+        // 小内存/低配环境上线程数必须收敛：Undertow 默认 worker = CPU*8，两个服务叠加能到上百个线程，
         // 加上堆内存限制后极易出现 "unable to create native thread"。
         int cores = Runtime.getRuntime().availableProcessors();
         int ioThreads = globalConfig.getInt("web.io.threads", Math.max(2, Math.min(4, cores)));
