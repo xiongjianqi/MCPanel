@@ -360,6 +360,11 @@ public class TerminalHandler {
         Map<String, Object> m = new HashMap<>();
         m.put("shutting_down", PANEL_SHUTTING_DOWN);
         m.put("mc_running", mc.isRunning());
+        // 排查 "unable to create native thread" 时有用
+        m.put("threads", Thread.activeCount());
+        Runtime rt = Runtime.getRuntime();
+        m.put("heap_used_mb", (rt.totalMemory() - rt.freeMemory()) / 1024 / 1024);
+        m.put("heap_max_mb", rt.maxMemory() / 1024 / 1024);
         ex.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json");
         ex.getResponseSender().send(MAPPER.writeValueAsString(m));
     }

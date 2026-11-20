@@ -28,6 +28,12 @@
 - 编译需要 Maven 3
 - 图形验证码用到 JDK 的 AWT（`java.desktop`），启动时会自动设置 `java.awt.headless=true`；验证码字体由 `easy-captcha` 自带，不用额外装系统字体
 
+### 小内存 / 手机部署
+
+- Undertow 默认线程数是「CPU×8」，面板还额外跑了一个分享服务，两个加起来很容易上百线程；本面板已把它收敛为 IO 4 + Worker 24（分享服务 2 + 8），可用配置项 `web.io.threads` / `web.worker.threads` 调整
+- 面板自身堆给 `-Xmx256M` ~ `-Xmx512M` 就够；实例内存单独在实例设置里配
+- 报 `unable to create native thread: possibly out of memory or process/resource limits reached` 说明是系统线程/内存到顶（不是堆溢出），重启面板并调低上面的线程数即可
+
 ## 快速开始
 
 从 Releases 下载 `mc-panel.jar`，放进一个空目录后运行：
