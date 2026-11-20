@@ -364,6 +364,25 @@ public class TerminalHandler {
         ex.getResponseSender().send(MAPPER.writeValueAsString(m));
     }
 
+    // 启动/停止这类动作串行执行：既不会并发抢跑，也不会每点一次就新建一个原生线程
+    private static final java.util.concurrent.ExecutorService ACTION_POOL =
+            java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r, "panel-action");
+                t.setDaemon(true);
+                return t;
+            });
+
+    // 调度动作线程；线程资源耗尽时给出明确提示，而不是抛到 Undertow 里变成 500
+    private void runAction(String label, Runnable task) {
+        try {
+            ACTION_POOL.execute(task);
+        } catch (Throwable t) {
+            addEntry("[Panel] ✗ 无法调度「" + label + "」: " + t.getClass().getSimpleName()
+                    + "（系统线程/内存不足，请重启面板或调低 web.worker.threads）");
+            mc.notifyStateChange();
+        }
+    }
+
     // 同意 EULA 并异步启动：写文件和启动都放到独立线程，避免阻塞 Undertow 的 IO/Worker 线程
     private void agreeEulaAndStartAsync() {
         String dirKey = "velocity".equals(config.get("_instance.type", "mc")) ? "velocity.server.dir" : "mc.server.dir";
@@ -380,14 +399,14 @@ public class TerminalHandler {
         mc.needsEula = false;
         mc.notifyStateChange();
         addEntry("[Panel] ✓ 已同意 EULA，正在启动服务端...");
-        new Thread(() -> {
+        runAction("启动", () -> {
             try {
                 mc.start();
             } catch (Throwable t) {
                 addEntry("[Panel] ✗ 启动失败: " + (t.getMessage() == null ? t.toString() : t.getMessage()));
                 mc.notifyStateChange();
             }
-        }, "eula-start").start();
+        });
     }
 
     private void handleAction(HttpServerExchange ex, String body, String currentUser) throws Exception {
@@ -418,21 +437,21 @@ public class TerminalHandler {
                     }
                 }
                 addEntry("[Panel] 请求启动");
-                new Thread(() -> {
+                runAction("启动", () -> {
                     try { mc.start(); } catch (Throwable t) {
                         addEntry("[Panel] ✗ 启动失败: " + t.getMessage());
                         mc.notifyStateChange();
                     }
-                }, "start").start();
+                });
                 break;
             case "stop":
                 addEntry("[Panel] 请求关闭");
-                new Thread(() -> {
+                runAction("关闭", () -> {
                     try { mc.shutdown(); } catch (Throwable t) {
                         addEntry("[Panel] ✗ 关闭失败: " + t.getMessage());
                         mc.notifyStateChange();
                     }
-                }, "stop").start();
+                });
                 break;
             case "restart":
                 if (mc.needsEula) {
@@ -443,12 +462,12 @@ public class TerminalHandler {
                     }
                 }
                 addEntry("[Panel] 请求重启");
-                new Thread(() -> {
+                runAction("重启", () -> {
                     try { mc.restart(); } catch (Throwable t) {
                         addEntry("[Panel] ✗ 重启失败: " + t.getMessage());
                         mc.notifyStateChange();
                     }
-                }, "restart").start();
+                });
                 break;
             case "kill":
                 addEntry("[Panel] 请求强制终止");

@@ -52,8 +52,19 @@ public class WebServer {
             }
         }
 
+        // 手机/小内存机器上线程数必须收敛：Undertow 默认 worker = CPU*8，两个服务叠加能到上百个线程，
+        // 加上堆内存限制后极易出现 "unable to create native thread"。
+        int cores = Runtime.getRuntime().availableProcessors();
+        int ioThreads = globalConfig.getInt("web.io.threads", Math.max(2, Math.min(4, cores)));
+        int workerThreads = globalConfig.getInt("web.worker.threads", Math.max(12, Math.min(24, cores * 3)));
+        int shareWorkers = Math.max(4, Math.min(8, workerThreads / 2));
+        System.out.println("[Panel] Web 线程配置: IO=" + ioThreads + ", Worker=" + workerThreads
+                + ", 分享服务 Worker=" + shareWorkers + "（可用 web.io.threads / web.worker.threads 覆盖）");
+
         try {
-            Undertow.Builder shareBuilder = Undertow.builder();
+            Undertow.Builder shareBuilder = Undertow.builder()
+                    .setIoThreads(Math.min(2, ioThreads))
+                    .setWorkerThreads(shareWorkers);
             if (sslContext != null) shareBuilder.addHttpsListener(sharePort, "0.0.0.0", sslContext);
             else shareBuilder.addHttpListener(sharePort, "0.0.0.0");
             shareUndertow = shareBuilder.setHandler(exchange -> new ShareHandler(globalConfig, auth).handle(exchange)).build();
@@ -63,7 +74,9 @@ public class WebServer {
             System.err.println("[Panel] 分享服务启动失败: " + e.getMessage());
         }
 
-        Undertow.Builder mainBuilder = Undertow.builder();
+        Undertow.Builder mainBuilder = Undertow.builder()
+                .setIoThreads(ioThreads)
+                .setWorkerThreads(workerThreads);
         if (sslContext != null) mainBuilder.addHttpsListener(port, "0.0.0.0", sslContext);
         else mainBuilder.addHttpListener(port, "0.0.0.0");
 
