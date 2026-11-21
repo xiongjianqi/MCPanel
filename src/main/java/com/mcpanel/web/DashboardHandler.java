@@ -59,8 +59,14 @@ public class DashboardHandler {
             return t;
         });
         
+        final long[] lastThreadCheck = {0L};
         ses.scheduleAtFixedRate(() -> {
             try {
+                long nowTs = System.currentTimeMillis();
+                if (nowTs - lastThreadCheck[0] > 60_000) {
+                    lastThreadCheck[0] = nowTs;
+                    checkThreadPressure();
+                }
                 com.mcpanel.instance.InstanceRuntimeManager mgr = com.mcpanel.instance.InstanceRuntimeManager.getInstance();
                 for (com.mcpanel.instance.InstanceRuntime rt : mgr.all()) {
                     String instanceId = rt.inst.id;
@@ -73,6 +79,37 @@ public class DashboardHandler {
                 }
             } catch (Throwable ignored) {}
         }, 1, 1, TimeUnit.SECONDS);
+    }
+
+    // 线程数偏高时输出一条诊断日志（按线程名前缀聚合），方便定位是谁在漏线程
+    // 线程接近系统/容器上限时，跳过可选的扫描，避免把最后一根线程也用掉
+    private static boolean threadPressureHigh() {
+        try {
+            return java.lang.management.ManagementFactory.getThreadMXBean().getThreadCount() > 200;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    private static void checkThreadPressure() {
+        try {
+            java.lang.management.ThreadMXBean mx = java.lang.management.ManagementFactory.getThreadMXBean();
+            int n = mx.getThreadCount();
+            if (n < 120) return;
+            Map<String, Integer> counts = new HashMap<>();
+            for (java.lang.management.ThreadInfo ti : mx.dumpAllThreads(false, false)) {
+                String name = ti.getThreadName();
+                int idx = Math.max(name.lastIndexOf('-'), name.lastIndexOf('#'));
+                if (idx > 0) name = name.substring(0, idx);
+                counts.merge(name, 1, Integer::sum);
+            }
+            StringBuilder sb = new StringBuilder();
+            counts.entrySet().stream()
+                    .sorted((a, b) -> b.getValue() - a.getValue())
+                    .limit(8)
+                    .forEach(e -> sb.append(e.getKey()).append('×').append(e.getValue()).append("  "));
+            System.err.println("[Panel] ⚠ 线程数偏高: " + n + " | " + sb);
+        } catch (Throwable ignored) {}
     }
 
     private static void sampleAndSave(String instanceId, ServerProcess mcServer, ConfigManager config, InstanceState st) {
@@ -111,7 +148,10 @@ public class DashboardHandler {
             pt.memTotal = st.lastMemTotal;
             if (pt.mem > pt.memTotal) pt.mem = pt.memTotal;
 
-            long[] netBytes = readProcessNetBytes(pid);
+            long[] netBytes = threadPressureHigh()
+                    ? new long[]{st.lastProcInBytes < 0 ? 0 : st.lastProcInBytes,
+                                 st.lastProcOutBytes < 0 ? 0 : st.lastProcOutBytes}
+                    : readProcessNetBytes(pid);
             long now = System.currentTimeMillis();
             
             if (st.lastNetTime > 0 && now > st.lastNetTime && st.lastProcInBytes != -1 && st.lastProcOutBytes != -1) {
@@ -261,30 +301,44 @@ public class DashboardHandler {
         }
     }
     
+    // 磁盘扫描统一交给一条常驻线程：以前每次请求都可能 new Thread，
+    // 在低配/小内存环境下会逐步耗尽原生线程（unable to create native thread）。
+    private static final java.util.concurrent.ExecutorService DISK_POOL =
+            java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r, "disk-scan");
+                t.setDaemon(true);
+                return t;
+            });
+
     private long computeDiskUsed(InstanceState st) {
         long now = System.currentTimeMillis();
         if (st.diskCalculating) return st.cachedDiskUsed;
         if (now - st.cachedDiskAt < 60_000) return st.cachedDiskUsed;
         
+        if (threadPressureHigh()) return st.cachedDiskUsed;
         st.diskCalculating = true;
         st.cachedDiskAt = now;
         
-        new Thread(() -> {
-            long used = 0;
-            try {
-                String dirKey = "velocity".equals(config.get("_instance.type", "mc")) ? "velocity.server.dir" : "mc.server.dir";
-                Path serverDir = config.resolve(config.get(dirKey, "server")).toPath().toAbsolutePath().normalize();
-                if (Files.exists(serverDir)) {
-                    try (Stream<Path> s = Files.walk(serverDir)) {
-                        used = s.filter(Files::isRegularFile).mapToLong(p -> {
-                            try { return Files.size(p); } catch (Throwable e) { return 0; }
-                        }).sum();
+        try {
+            DISK_POOL.execute(() -> {
+                long used = 0;
+                try {
+                    String dirKey = "velocity".equals(config.get("_instance.type", "mc")) ? "velocity.server.dir" : "mc.server.dir";
+                    Path serverDir = config.resolve(config.get(dirKey, "server")).toPath().toAbsolutePath().normalize();
+                    if (Files.exists(serverDir)) {
+                        try (Stream<Path> s = Files.walk(serverDir)) {
+                            used = s.filter(Files::isRegularFile).mapToLong(p -> {
+                                try { return Files.size(p); } catch (Throwable e) { return 0; }
+                            }).sum();
+                        }
                     }
-                }
-            } catch (Throwable ignored) {}
-            st.cachedDiskUsed = used;
-            st.diskCalculating = false;
-        }).start();
+                } catch (Throwable ignored) {}
+                st.cachedDiskUsed = used;
+                st.diskCalculating = false;
+            });
+        } catch (Throwable t) {
+            st.diskCalculating = false; // 线程池不可用时不要卡住后续刷新
+        }
 
         return st.cachedDiskUsed;
     }
@@ -340,7 +394,7 @@ public class DashboardHandler {
                     if (line.startsWith("ESTAB") || line.startsWith("LISTEN") || line.startsWith("TIME-WAIT") || line.trim().isEmpty()) matchPid = false;
                 }
             }
-            p.waitFor();
+            if (!p.waitFor(2, TimeUnit.SECONDS)) p.destroyForcibly();
         } catch (Throwable ignored) {}
         return new long[]{totalIn, totalOut};
     }

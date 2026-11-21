@@ -56,10 +56,11 @@ public class WebServer {
         // 加上堆内存限制后极易出现 "unable to create native thread"。
         int cores = Runtime.getRuntime().availableProcessors();
         int ioThreads = globalConfig.getInt("web.io.threads", Math.max(2, Math.min(4, cores)));
-        int workerThreads = globalConfig.getInt("web.worker.threads", Math.max(12, Math.min(24, cores * 3)));
-        int shareWorkers = Math.max(4, Math.min(8, workerThreads / 2));
+        int workerThreads = globalConfig.getInt("web.worker.threads", Math.max(8, Math.min(16, cores * 2)));
+        int shareWorkers = Math.max(4, Math.min(6, workerThreads / 2));
         System.out.println("[Panel] Web 线程配置: IO=" + ioThreads + ", Worker=" + workerThreads
                 + ", 分享服务 Worker=" + shareWorkers + "（可用 web.io.threads / web.worker.threads 覆盖）");
+        logThreadLimits();
 
         try {
             Undertow.Builder shareBuilder = Undertow.builder()
@@ -90,6 +91,27 @@ public class WebServer {
 
         undertow.start();
         System.out.println("[Panel] Web 管理界面已启动，端口: " + port);
+    }
+
+    // 启动时把系统/容器的进程线程上限打出来，出现 "unable to create native thread" 时一眼能对上
+    private static void logThreadLimits() {
+        try {
+            java.nio.file.Path limits = java.nio.file.Paths.get("/proc/self/limits");
+            if (java.nio.file.Files.exists(limits)) {
+                for (String line : java.nio.file.Files.readAllLines(limits)) {
+                    if (line.startsWith("Max processes")) {
+                        System.out.println("[Panel] 进程/线程上限: " + line.replaceAll("\\s+", " ").trim());
+                        break;
+                    }
+                }
+            }
+            java.nio.file.Path pidsMax = java.nio.file.Paths.get("/sys/fs/cgroup/pids.max");
+            if (java.nio.file.Files.exists(pidsMax)) {
+                String v = new String(java.nio.file.Files.readAllBytes(pidsMax),
+                        java.nio.charset.StandardCharsets.UTF_8).trim();
+                if (!v.isEmpty()) System.out.println("[Panel] cgroup pids.max: " + v);
+            }
+        } catch (Throwable ignored) {}
     }
 
     private void handleRequest(HttpServerExchange exchange) {
