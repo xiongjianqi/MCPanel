@@ -60,11 +60,11 @@ public class Main {
             System.err.println("[Panel] Web 服务启动失败: " + e.getMessage());
         }
 
-        new Thread(() -> {
+        com.mcpanel.util.Async.serial(() -> {
             try { DockerManager.initDocker(System.out::println); } catch (Throwable t) {}
             try { SshManager.initSsh(System.out::println); } catch (Throwable t) {}
             try { rtMgr.initAll(); } catch (Throwable t) {}
-        }, "bg-init-serial").start();
+        });
 
         Thread consoleThread = new Thread(() -> {
             BufferedReader reader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));

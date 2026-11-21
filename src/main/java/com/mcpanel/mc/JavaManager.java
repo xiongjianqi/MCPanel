@@ -86,7 +86,7 @@ public class JavaManager {
         st.state = "downloading";
         statusMap.put(key, st);
 
-        new Thread(() -> {
+        com.mcpanel.util.Async.worker("java-downloader", () -> {
             try {
                 String os = System.getProperty("os.name").toLowerCase();
                 String arch = System.getProperty("os.arch").toLowerCase();
@@ -121,7 +121,7 @@ public class JavaManager {
                 if (supportsRange && totalBytes > 0) {
                     final long finalTotalBytes = totalBytes;
                     st.totalBytes = finalTotalBytes;
-                    int threads = 4;
+                    int threads = 4; // 分段下载固定 4 路，避免一次拉起过多线程
                     long chunkSize = finalTotalBytes / threads;
                     RandomAccessFile raf = new RandomAccessFile(tmpFile, "rw");
                     raf.setLength(finalTotalBytes);
@@ -132,7 +132,7 @@ public class JavaManager {
                         long start = i * chunkSize;
                         long end = (i == threads - 1) ? finalTotalBytes - 1 : (start + chunkSize - 1);
 
-                        Thread t = new Thread(() -> {
+                        Thread t = com.mcpanel.util.Async.worker("java-chunk", () -> {
                             try {
                                 HttpRequest req = HttpRequest.newBuilder()
                                         .uri(URI.create(downloadUrl))
@@ -161,7 +161,6 @@ public class JavaManager {
                             } catch (Exception ignored) {}
                         });
                         threadList.add(t);
-                        t.start();
                     }
                     for (Thread t : threadList) t.join();
                     raf.close();
@@ -211,7 +210,7 @@ public class JavaManager {
             } finally {
                 downloading.remove(key);
             }
-        }, "java-downloader-" + key).start();
+        });
     }
 
     private static String resolveDownloadUrl(String type, int version, String os, String arch, String ext) {

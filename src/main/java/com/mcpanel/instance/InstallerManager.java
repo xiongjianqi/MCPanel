@@ -70,7 +70,7 @@ public class InstallerManager {
         downloadedBytes = 0;
 
         final String coreFinal = core;
-        new Thread(() -> {
+        com.mcpanel.util.Async.worker("installer", () -> {
             try {
                 doInstall(core, mcVersion, coreVersion, instVersion, keepWorld);
                 success = true;
@@ -86,7 +86,7 @@ public class InstallerManager {
                 running = false;
                 finished = true;
             }
-        }, "installer").start();
+        });
     }
 
     private void doInstall(String core, String mcVersion, String coreVersion,

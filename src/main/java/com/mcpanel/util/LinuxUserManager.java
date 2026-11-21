@@ -35,14 +35,12 @@ public class LinuxUserManager {
         if (cmd == null || cmd.length == 0) return -2;
         try {
             Process p = new ProcessBuilder(cmd).redirectErrorStream(true).start();
-            Thread drain = new Thread(() -> {
+            Async.run(() -> {
                 try (BufferedReader br = new BufferedReader(
                         new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
                     while (br.readLine() != null) { }
                 } catch (Exception ignored) {}
-            }, "runCmd-drain");
-            drain.setDaemon(true);
-            drain.start();
+            });
 
             if (!p.waitFor(timeoutSec, TimeUnit.SECONDS)) {
                 p.destroyForcibly();
@@ -59,7 +57,7 @@ public class LinuxUserManager {
         try {
             Process p = new ProcessBuilder(cmd).redirectErrorStream(false).start();
             StringBuilder out = new StringBuilder();
-            Thread t = new Thread(() -> {
+            Thread t = Async.worker("runcap-out", () -> {
                 try (BufferedReader br = new BufferedReader(
                         new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
                     String line;
@@ -67,18 +65,13 @@ public class LinuxUserManager {
                         if (out.length() < 4096) out.append(line).append('\n');
                     }
                 } catch (Exception ignored) {}
-            }, "runCmdCapture-out");
-            t.setDaemon(true);
-            t.start();
-            
-            Thread e = new Thread(() -> {
+            });
+            Async.run(() -> {
                 try (InputStream is = p.getErrorStream()) {
                     byte[] buf = new byte[4096];
                     while (is.read(buf) != -1) {}
                 } catch (Exception ignored) {}
-            }, "runCmdCapture-err");
-            e.setDaemon(true);
-            e.start();
+            });
 
             if (!p.waitFor(timeoutSec, TimeUnit.SECONDS)) {
                 p.destroyForcibly();
@@ -249,7 +242,7 @@ public class LinuxUserManager {
             Process p = new ProcessBuilder(su, "-s", "/bin/sh", username, "-c", "true")
                     .redirectErrorStream(true).start();
             final StringBuilder out = new StringBuilder();
-            Thread drain = new Thread(() -> {
+            Async.run(() -> {
                 try (BufferedReader br = new BufferedReader(
                         new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
                     String line;
@@ -257,9 +250,7 @@ public class LinuxUserManager {
                         if (out.length() < 512) out.append(line).append('\n');
                     }
                 } catch (Exception ignored) {}
-            }, "su-check");
-            drain.setDaemon(true);
-            drain.start();
+            });
             if (!p.waitFor(3, TimeUnit.SECONDS)) { p.destroyForcibly(); return false; }
             if (p.exitValue() != 0) {
                 System.err.println("[LinuxUserManager] su 到 " + username + " 失败: " + out.toString().trim());

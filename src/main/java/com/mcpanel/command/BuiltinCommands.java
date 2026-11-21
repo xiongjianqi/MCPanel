@@ -159,16 +159,16 @@ public class BuiltinCommands {
         switch (op) {
             case "start":
                 if (mcServer.isRunning()) { s.reply("§cMC 已在运行"); return; }
-                new Thread(mcServer::start, "mc-start").start();
+                com.mcpanel.util.Async.run(mcServer::start);
                 s.reply("§a正在启动 MC...");
                 break;
             case "stop":
                 if (!mcServer.isRunning()) { s.reply("§cMC 未运行"); return; }
-                new Thread(mcServer::shutdown, "mc-stop").start();
+                com.mcpanel.util.Async.run(mcServer::shutdown);
                 s.reply("§a正在关闭 MC...");
                 break;
             case "restart":
-                new Thread(mcServer::restart, "mc-restart").start();
+                com.mcpanel.util.Async.run(mcServer::restart);
                 s.reply("§a正在重启 MC...");
                 break;
             case "kill":
@@ -318,7 +318,7 @@ public class BuiltinCommands {
             }
             String desc = args.length > 2 ? String.join(" ", Arrays.copyOfRange(args, 2, args.length)) : "";
             s.reply("§e正在备份，请稍候...");
-            new Thread(() -> {
+            com.mcpanel.util.Async.worker("cmd-backup", () -> {
                 try {
                     Path dest = backupRoot.resolve(name);
                     if (Files.exists(dest)) { s.reply("§c同名备份已存在"); return; }
@@ -334,7 +334,7 @@ public class BuiltinCommands {
                 } catch (Exception e) {
                     s.reply("§c备份失败: " + e.getMessage());
                 }
-            }, "cmd-backup").start();
+            });
             return;
         }
 

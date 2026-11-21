@@ -44,13 +44,13 @@ public class InstanceRuntimeManager {
 
         // ★ 核心修复：异步并发启动实例，不再阻塞主线程
         for (InstanceRuntime rt : runtimes.values()) {
-            new Thread(() -> {
+            com.mcpanel.util.Async.run(() -> {
                 try {
                     rt.start();
                 } catch (Exception e) {
                     System.err.println("[Panel] 启动实例 " + rt.inst.id + " 失败: " + e.getMessage());
                 }
-            }, "inst-start-" + rt.inst.id).start();
+            });
         }
 
         System.out.println("[Panel] 共 " + runtimes.size() + " 个实例运行时，默认实例: " + defaultInstanceId);
@@ -101,9 +101,9 @@ public class InstanceRuntimeManager {
     public void startInstance(String id) {
         InstanceRuntime rt = runtimes.get(id);
         if (rt == null) return;
-        new Thread(() -> {
+        com.mcpanel.util.Async.run(() -> {
             try { rt.start(); } catch (Exception e) {}
-        }, "start-inst-" + id).start();
+        });
     }
 
     public void clearAllLogs() {
@@ -115,7 +115,7 @@ public class InstanceRuntimeManager {
     public void shutdownAll() {
         List<Thread> workers = new ArrayList<>();
         for (final InstanceRuntime rt : runtimes.values()) {
-            Thread t = new Thread(() -> {
+            Thread t = com.mcpanel.util.Async.worker("shutdown-all-" + rt.inst.id, () -> {
                 try {
                     String displayName = (rt.inst.name != null && !rt.inst.name.isEmpty()) ? rt.inst.name : rt.inst.id;
                     if (rt.mcServer.isRunning()) {
@@ -127,9 +127,7 @@ public class InstanceRuntimeManager {
                     }
                     // ★ 修复：如果本来就停止，不输出任何终端日志
                 } catch (Throwable ignored) {}
-            }, "shutdown-all-" + rt.inst.id);
-            t.setDaemon(true);
-            t.start();
+            });
             workers.add(t);
         }
         for (Thread t : workers) {

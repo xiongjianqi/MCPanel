@@ -263,7 +263,7 @@ public class RemoteHandler {
                         if (rt != null) {
                             Instance inst = rt.inst;
                             if (inst.sysUser == null) {
-                                new Thread(() -> LinuxUserManager.initInstanceUser(inst, inst.getDir())).start();
+                                com.mcpanel.util.Async.run(() -> LinuxUserManager.initInstanceUser(inst, inst.getDir()));
                                 map.put("enabled", false);
                                 map.put("reason", "正在初始化系统用户，请稍后刷新");
                                 ex.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json");

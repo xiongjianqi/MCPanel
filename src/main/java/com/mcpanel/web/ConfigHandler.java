@@ -88,7 +88,7 @@ public class ConfigHandler {
                         }
 
                         if (params.containsKey("remote.ssh.port")) {
-                            new Thread(() -> SshManager.initSsh(System.out::println)).start();
+                            com.mcpanel.util.Async.run(() -> SshManager.initSsh(System.out::println));
                         }
                     
                         ex.getResponseSender().send("{\"ok\":true}");

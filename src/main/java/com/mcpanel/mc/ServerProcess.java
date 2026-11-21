@@ -145,7 +145,7 @@ public class ServerProcess {
             return;
         }
 
-        Thread reader = new Thread(() -> {
+        com.mcpanel.util.Async.worker("mc-log-reader", () -> {
             try (BufferedReader br = new BufferedReader(
                     new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
                 String line;
@@ -174,9 +174,7 @@ public class ServerProcess {
             }
 
             if (onExit != null) onExit.accept(code);
-        }, "installer-reader");
-        reader.setDaemon(false);
-        reader.start();
+        });
     }
 
     public void startIfPresent() {
@@ -253,15 +251,12 @@ public class ServerProcess {
             broadcast("[Panel] 容器已启动，ID: " + containerId);
 
             final long myStart = startTime;
-            Thread timeoutThread = new Thread(() -> {
-                try { Thread.sleep(STARTUP_TIMEOUT_MS); } catch (InterruptedException ignored) { return; }
+            com.mcpanel.util.Async.later(STARTUP_TIMEOUT_MS, () -> {
                 if (starting && running && startTime == myStart) setState(true, false);
             });
-            timeoutThread.setDaemon(true);
-            timeoutThread.start();
 
             logProcess = DockerManager.streamLogs(containerName);
-            Thread reader = new Thread(() -> {
+            com.mcpanel.util.Async.worker("mc-log-reader", () -> {
                 try (BufferedReader br = new BufferedReader(
                         new InputStreamReader(logProcess.getInputStream(), StandardCharsets.UTF_8))) {
                     String line;
@@ -292,8 +287,6 @@ public class ServerProcess {
                 setState(false, false);
                 broadcast("[Panel] 容器日志流已断开，容器已退出");
             });
-            reader.setDaemon(true);
-            reader.start();
 
         } catch (Exception e) {
             broadcast("[Panel] ✗ 容器启动失败: " + e.getMessage());
@@ -472,7 +465,7 @@ public class ServerProcess {
             processInput = new BufferedWriter(
                     new OutputStreamWriter(proc.getOutputStream(), StandardCharsets.UTF_8));
 
-            Thread pidFinder = new Thread(() -> {
+            com.mcpanel.util.Async.worker("pid-finder", () -> {
                 for (int i = 0; i < 15; i++) {
                     try {
                         Thread.sleep(1000);
@@ -503,19 +496,13 @@ public class ServerProcess {
                     } catch (Exception ignored) {}
                 }
             });
-            pidFinder.setDaemon(true);
-            pidFinder.start();
 
             final long myStart = startTime;
-            Thread timeoutThread = new Thread(() -> {
-                try { Thread.sleep(STARTUP_TIMEOUT_MS); }
-                catch (InterruptedException ignored) { return; }
+            com.mcpanel.util.Async.later(STARTUP_TIMEOUT_MS, () -> {
                 if (starting && running && startTime == myStart) setState(true, false);
             });
-            timeoutThread.setDaemon(true);
-            timeoutThread.start();
 
-            Thread reader = new Thread(() -> {
+            com.mcpanel.util.Async.worker("mc-log-reader", () -> {
                 boolean eulaPending = false;
                 try (BufferedReader br = new BufferedReader(
                         new InputStreamReader(proc.getInputStream(), StandardCharsets.UTF_8))) {
@@ -566,8 +553,6 @@ public class ServerProcess {
                 setState(false, false);
                 broadcast("[Panel] 实例进程已退出");
             });
-            reader.setDaemon(true);
-            reader.start();
 
         } catch (IOException e) {
             failStart("启动进程失败: " + e.getClass().getSimpleName()

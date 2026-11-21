@@ -28,16 +28,14 @@ public class SshdLogParser {
             pb.redirectErrorStream(true); 
             sshdProcess = pb.start();
             
-            readerThread = new Thread(() -> {
+            readerThread = com.mcpanel.util.Async.worker("sshd-log-reader", () -> {
                 try (BufferedReader br = new BufferedReader(new InputStreamReader(sshdProcess.getInputStream(), StandardCharsets.UTF_8))) {
                     String line;
                     while ((line = br.readLine()) != null) {
                         parseLine(line);
                     }
                 } catch (Exception ignored) {}
-            }, "sshd-log-reader");
-            readerThread.setDaemon(true);
-            readerThread.start();
+            });
             
         } catch (Exception e) {
             System.err.println("[SshdLogParser] 启动 sshd 失败: " + e.getMessage());

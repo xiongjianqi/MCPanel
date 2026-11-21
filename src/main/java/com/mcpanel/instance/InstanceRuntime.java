@@ -96,7 +96,7 @@ public class InstanceRuntime {
         // ★ 核心修复：系统用户初始化挪到这里，最多等 5 秒；超时就跳过（不用 su 启动）
         if (LinuxUserManager.isEnabled(this) && !LinuxUserManager.isUserReady(inst)) {
             final CountDownLatch latch = new CountDownLatch(1);
-            new Thread(() -> {
+            com.mcpanel.util.Async.run(() -> {
                 try {
                     LinuxUserManager.initInstanceUser(inst, inst.getDir());
                 } catch (Throwable t) {
@@ -104,7 +104,7 @@ public class InstanceRuntime {
                 } finally {
                     latch.countDown();
                 }
-            }, "init-user-" + inst.id).start();
+            });
             try {
                 if (!latch.await(8, TimeUnit.SECONDS)) {
                     System.err.println("[Instance] " + inst.id + " 初始化系统用户超时，降级为普通启动");

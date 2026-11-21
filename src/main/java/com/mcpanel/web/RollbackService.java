@@ -23,15 +23,13 @@ public class RollbackService {
 
     public boolean startRollback(String backupName) {
         if (!running.compareAndSet(false, true)) return false;
-        Thread t = new Thread(() -> {
+        com.mcpanel.util.Async.serial(() -> {
             try { doRollback(backupName); }
             catch (Exception e) {
                 if (terminal != null) terminal.log("[Panel] 回档失败：" + e.getMessage());
                 e.printStackTrace();
             } finally { running.set(false); }
-        }, "rollback-" + backupName);
-        t.setDaemon(true);
-        t.start();
+        });
         return true;
     }
 

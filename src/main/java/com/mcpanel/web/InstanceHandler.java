@@ -290,7 +290,7 @@ public class InstanceHandler {
             if (rt != null && LinuxUserManager.isEnabled(rt)) {
                 final String instId = inst.id;
                 final File instDir = inst.getDir();
-                new Thread(() -> LinuxUserManager.initInstanceUser(inst, instDir), "init-user-" + instId).start();
+                com.mcpanel.util.Async.run(() -> LinuxUserManager.initInstanceUser(inst, instDir));
             }
             
             result.put("ok", true);

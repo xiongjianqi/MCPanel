@@ -73,7 +73,7 @@ public class TerminalHandler {
     }
 
     private void startLogWriter() {
-        logWriterThread = new Thread(new Runnable() {
+        logWriterThread = com.mcpanel.util.Async.worker("terminal-log-writer", new Runnable() {
             @Override
             public void run() {
                 BufferedWriter w = null;
@@ -116,9 +116,7 @@ public class TerminalHandler {
                     }
                 }
             }
-        }, "terminal-log-writer");
-        logWriterThread.setDaemon(true);
-        logWriterThread.start();
+        });
     }
 
     public void log(String msg) { addEntry(msg); }
@@ -268,7 +266,7 @@ public class TerminalHandler {
     public void triggerPanelShutdown() {
         if (PANEL_SHUTTING_DOWN) return;
         PANEL_SHUTTING_DOWN = true;
-        new Thread(() -> {
+        com.mcpanel.util.Async.worker("panel-shutdown", () -> {
             try {
                 addEntry("[Panel] 正在关闭所有实例...");
                 InstanceRuntimeManager.getInstance().shutdownAll();
@@ -277,7 +275,7 @@ public class TerminalHandler {
                 Thread.sleep(1500);
             } catch (Exception e) {}
             System.exit(0);
-        }, "panel-shutdown").start();
+        });
     }
 
     public void handleApi(HttpServerExchange exchange, String currentUser) {
