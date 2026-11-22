@@ -16,6 +16,10 @@ public class AuthHandler {
     private final Map<String, Session> sessions = new ConcurrentHashMap<>();
     private static final com.fasterxml.jackson.databind.ObjectMapper MAPPER = new com.fasterxml.jackson.databind.ObjectMapper();
     private static final String SESSION_FILE = "sessions.json";
+    /** 会话有效期默认 15 天（360 小时） */
+    private static final int DEFAULT_SESSION_HOURS = 360;
+    /** 活跃访问时最多每 6 小时顺延一次有效期，避免每个请求都写盘 */
+    private static final long SESSION_RENEW_AFTER_MS = 6 * 3600_000L;
     
     private static final Map<String, String> emailCodes = new ConcurrentHashMap<>();
     private static final Map<String, Integer> emailCodeAttempts = new ConcurrentHashMap<>();
@@ -83,8 +87,13 @@ public class AuthHandler {
             if (f.exists()) {
                 java.util.Map<String, Session> loaded = MAPPER.readValue(f, new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String, Session>>() {});
                 long now = System.currentTimeMillis();
+                long maxExpire = now + sessionTimeoutHours() * 3600_000L;
                 for (java.util.Map.Entry<String, Session> e : loaded.entrySet()) {
-                    if (e.getValue().expireAt > now) sessions.put(e.getKey(), e.getValue());
+                    Session s = e.getValue();
+                    if (s == null || s.expireAt <= now) continue;
+                    // 老版本默认 30 天，升级后把还在有效期内的会话按新上限收紧
+                    if (s.expireAt > maxExpire) s.expireAt = maxExpire;
+                    sessions.put(e.getKey(), s);
                 }
             }
         } catch (Exception ignored) {}
@@ -751,7 +760,7 @@ public class AuthHandler {
         String token = UUID.randomUUID().toString();
         Session s = new Session();
         s.username = user;
-        int timeoutHours = config.getInt("web.session.timeout.hours", 720);
+        int timeoutHours = sessionTimeoutHours();
         s.expireAt = System.currentTimeMillis() + timeoutHours * 3600_000L;
         sessions.put(token, s);
         saveSessionsAsync();
@@ -765,6 +774,24 @@ public class AuthHandler {
         ex.setStatusCode(302);
         ex.getResponseHeaders().put(Headers.LOCATION, "/");
         ex.endExchange();
+    }
+
+    /** 会话有效期（小时）：默认 15 天；配置非法时回落到默认值，上限一年防止手滑 */
+    private int sessionTimeoutHours() {
+        int h = config.getInt("web.session.timeout.hours", DEFAULT_SESSION_HOURS);
+        if (h < 1) h = DEFAULT_SESSION_HOURS;
+        if (h > 24 * 365) h = 24 * 365;
+        return h;
+    }
+
+    /** 续期时同步刷新浏览器里的 cookie，否则 cookie 会先于会话过期 */
+    private void renewTokenCookie(HttpServerExchange ex, String token, int timeoutHours) {
+        if (ex.isResponseStarted()) return;
+        boolean isSsl = config.getBool("web.ssl.enabled", false);
+        String secure = isSsl ? " Secure;" : "";
+        ex.getResponseHeaders().put(Headers.SET_COOKIE,
+                "token=" + token + "; Path=/; HttpOnly; SameSite=Lax;" + secure
+                        + " Max-Age=" + (timeoutHours * 3600L));
     }
 
     public boolean isAuthenticated(HttpServerExchange exchange) {
@@ -794,11 +821,20 @@ public class AuthHandler {
                     String token = part.substring(6);
                     Session s = sessions.get(token);
                     if (s != null) {
-                        if (System.currentTimeMillis() > s.expireAt) {
+                        long now = System.currentTimeMillis();
+                        if (now > s.expireAt) {
                             sessions.remove(token); saveSessionsAsync();
                         } else {
                             // ★ 核心修复：如果 users.json 里已经没有这个用户了，强制销毁这个无效的 session，防止“幽灵登录”
                             if (UserStore.getInstance().findUser(s.username) != null) {
+                                // 滑动续期：只有连续 15 天没有任何请求才会真正过期
+                                int hours = sessionTimeoutHours();
+                                long ttlMs = hours * 3600_000L;
+                                if (s.expireAt - now < ttlMs - SESSION_RENEW_AFTER_MS) {
+                                    s.expireAt = now + ttlMs;
+                                    saveSessionsAsync();
+                                    renewTokenCookie(exchange, token, hours);
+                                }
                                 return s.username;
                             } else {
                                 sessions.remove(token);

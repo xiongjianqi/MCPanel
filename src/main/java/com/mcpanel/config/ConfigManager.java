@@ -83,7 +83,7 @@ public class ConfigManager {
         // 补全 SSH/SFTP 的端口配置
         defaults.put("remote.ssh.port", "22");
         defaults.put("remote.sftp.port", "22");
-        defaults.put("web.session.timeout.hours", "720");
+        defaults.put("web.session.timeout.hours", "360");
         defaults.put("security.no_sandbox.lock", "true");
 
         boolean changed = false;
@@ -92,6 +92,15 @@ public class ConfigManager {
                 props.setProperty(e.getKey(), e.getValue());
                 changed = true;
             }
+        }
+        // 一次性迁移：老版本默认 720 小时（30 天），新版本默认 360 小时（15 天）。
+        // 用 "_" 前缀的隐藏键做标记（不会出现在配置页），避免每次启动把用户改过的值重置。
+        if (!props.containsKey("_session.timeout.migrated")) {
+            if ("720".equals(props.getProperty("web.session.timeout.hours"))) {
+                props.setProperty("web.session.timeout.hours", "360");
+            }
+            props.setProperty("_session.timeout.migrated", "1");
+            changed = true;
         }
         if (changed) save();
     }

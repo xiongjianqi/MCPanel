@@ -152,7 +152,7 @@ var CFG_LABEL = {
   'web.ssl.enabled':            '是否启用 HTTPS (true/false)',
   'web.ssl.cert':               'HTTPS 证书路径（相对路径）',
   'web.ssl.key':                'HTTPS 私钥路径（相对路径）',
-  'web.session.timeout.hours':  'Web 登录会话过期时间（小时）',
+  'web.session.timeout.hours':  'Web 登录有效期（小时，默认 360 = 15 天，活跃自动续期）',
   
   'security.no_sandbox.lock':   '无沙箱时锁定核心文件 (true/false)',
   
