@@ -45,9 +45,6 @@ function remoteInit() {
         var elSftp = document.getElementById('remote-sftp-port');
         if(elSftp) elSftp.textContent = r.sftpPort || '-';
         
-        var authType = document.getElementById('remote-auth-type');
-        if(authType) authType.style.display = 'block';
-        
         var btnKey = document.getElementById('btn-download-key');
         if(btnKey) {
             btnKey.style.display = 'inline-flex';
@@ -94,15 +91,12 @@ function remoteInit() {
       var elSftp = document.getElementById('remote-sftp-port');
       if(elSftp) elSftp.textContent = r.sftpPort || '-';
       
-      // 已改为仅密钥登录：密码栏已从页面移除
-      var authType = document.getElementById('remote-auth-type');
-      if(authType) authType.style.display = 'block';
-      
+      // 已改为仅密钥登录：密码栏、认证方式栏都已移除
       var btnKey = document.getElementById('btn-download-key');
       if (btnKey) {
         if (r.hasKey) {
           btnKey.style.display = 'inline-flex';
-          btnKey.textContent = '下载 SFTP 私钥';
+          btnKey.textContent = '下载私钥';
           btnKey.onclick = function() {
               window.location.href = '/api/remote/ssh-key?instance=' + encodeURIComponent(currentInstanceId);
           };
@@ -199,14 +193,12 @@ function copyRemoteCmd(type) {
   
   if (!domain.textContent || user.textContent === '-' || domain.textContent === '-' || domain.textContent === '未配置域名') return;
   
-  var cmd = type + " -P " + port + " " + user.textContent + "@" + domain.textContent;
+  // 已改为仅密钥登录：两种命令都带 -i，提示替换成自己的私钥路径
+  var cmd;
   if (type === 'ssh') {
-      cmd = "ssh -p " + port + " " + user.textContent + "@" + domain.textContent;
-  }
-
-  var authType = document.getElementById('remote-auth-type');
-  if (user.textContent === 'root' && authType && authType.style.display !== 'none') {
-      cmd = type + " -i /path/to/root_rsa.key " + (port !== '22' ? "-p " + port + " " : "") + user.textContent + "@" + domain.textContent;
+      cmd = "ssh -i /path/to/private_key -p " + port + " " + user.textContent + "@" + domain.textContent;
+  } else {
+      cmd = "sftp -i /path/to/private_key -P " + port + " " + user.textContent + "@" + domain.textContent;
   }
 
   copyToClipboard(cmd).then(() => toast('已复制', 'ok'));
