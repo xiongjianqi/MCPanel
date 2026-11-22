@@ -559,14 +559,17 @@ public class PluginManager {
     public static class RouteMemory {
         private static final Map<String, String> pending = new ConcurrentHashMap<>();
         private static final Map<String, String> persistent = new ConcurrentHashMap<>();
+        private static final int MAX_PENDING = 20000;
 
         public static void setPending(String player, String instance, int ttlSeconds) {
             if (player == null || instance == null) return;
+            // ★ 修复：以前每次调用都 new java.util.Timer()，一个 Timer 就是一条线程，
+            // 而且要等对象被 GC/finalize 才会退出；插件按事件高频调用时线程会慢性堆积。
+            // 现在统一交给共享的调度器，一个进程只有一条定时线程。
+            if (pending.size() >= MAX_PENDING) pending.clear();
             pending.put(player, instance);
             if (ttlSeconds > 0) {
-                new java.util.Timer(true).schedule(new java.util.TimerTask() {
-                    @Override public void run() { pending.remove(player); }
-                }, ttlSeconds * 1000L);
+                com.mcpanel.util.Async.later(ttlSeconds * 1000L, () -> pending.remove(player, instance));
             }
         }
 

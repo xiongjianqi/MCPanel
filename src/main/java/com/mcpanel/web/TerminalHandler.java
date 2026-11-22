@@ -49,6 +49,9 @@ public class TerminalHandler {
     private static final String LOG_RESET_SENTINEL = "\u0000__MCPANEL_LOG_RESET__";
     private static final long MAX_LOG_BYTES = 5 * 1024 * 1024L;
     private Thread logWriterThread;
+    // 保存监听器引用，实例被删除时才能从 ServerProcess 上摘下来（否则每建一次运行时都多一个监听器）
+    private final ServerProcess.OutputListener outputListener = this::addEntry;
+    private final ServerProcess.StateListener stateListener = this::broadcastState;
 
     private static class Entry {
         final long seq;
@@ -68,8 +71,25 @@ public class TerminalHandler {
 
         loadHistory();
         startLogWriter();
-        mc.addListener(line -> addEntry(line));
-        mc.addStateListener(state -> broadcastState(state));
+        mc.addListener(outputListener);
+        mc.addStateListener(stateListener);
+    }
+
+    /** 实例运行时被移除时调用：摘掉监听器、停掉常驻写盘线程，避免线程与监听器越积越多 */
+    public void close() {
+        try { mc.removeListener(outputListener); } catch (Throwable ignored) {}
+        try { mc.removeStateListener(stateListener); } catch (Throwable ignored) {}
+        for (WebSocketChannel ch : channels) {
+            try { ch.sendClose(); } catch (Throwable ignored) {}
+        }
+        channels.clear();
+        logWriteQueue.clear();
+        logWriteQueue.offer(LOG_RESET_SENTINEL);
+        Thread t = logWriterThread;
+        logWriterThread = null;
+        if (t != null) {
+            try { t.interrupt(); } catch (Throwable ignored) {}
+        }
     }
 
     private void startLogWriter() {
@@ -358,8 +378,19 @@ public class TerminalHandler {
         Map<String, Object> m = new HashMap<>();
         m.put("shutting_down", PANEL_SHUTTING_DOWN);
         m.put("mc_running", mc.isRunning());
-        // 排查 "unable to create native thread" 时有用
-        m.put("threads", Thread.activeCount());
+        // 排查 "unable to create native thread" 时有用：threads 是 JVM 全部线程数
+        // （Thread.activeCount 只统计当前线程组，数字会偏小），blocking_workers 是阻塞型任务数。
+        int totalThreads;
+        try {
+            totalThreads = java.lang.management.ManagementFactory.getThreadMXBean().getThreadCount();
+        } catch (Throwable t) {
+            totalThreads = Thread.activeCount();
+        }
+        m.put("threads", totalThreads);
+        m.put("blocking_workers", com.mcpanel.util.Async.workerCount());
+        m.put("blocking_worker_max", com.mcpanel.util.Async.maxWorkers());
+        // 面板之外（比如停不下来后残留的）java 进程线程数，便于对齐 ps -eLf 的数字
+        m.put("other_java_processes", com.mcpanel.util.ProcStats.summary());
         Runtime rt = Runtime.getRuntime();
         m.put("heap_used_mb", (rt.totalMemory() - rt.freeMemory()) / 1024 / 1024);
         m.put("heap_max_mb", rt.maxMemory() / 1024 / 1024);

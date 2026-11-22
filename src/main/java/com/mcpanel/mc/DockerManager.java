@@ -67,10 +67,41 @@ public class DockerManager {
     }
 
     private static boolean testDocker() {
+        return runQuietCode(5, "docker", "info") == 0;
+    }
+
+    /**
+     * ★ 线程治理：所有「一次性」docker 命令都走这里。
+     *
+     * 旧写法 new ProcessBuilder(...).start() 之后既不读输出也不关闭流：
+     *  - 输出超过管道缓冲（64KB）时子进程会永久阻塞；
+     *  - 子进程不退出，JVM 的 process reaper 线程就一直挂着；
+     *  - 没有超时的 waitFor 会把调用线程永久堵死。
+     * 统一用 DISCARD + 超时，既不产生读线程，也不会留下孤儿进程。
+     */
+    private static int runQuietCode(long timeoutSec, String... cmd) {
+        Process p = null;
         try {
-            Process p = new ProcessBuilder("docker", "info").start();
-            return p.waitFor(5, TimeUnit.SECONDS) && p.exitValue() == 0;
-        } catch (Exception ignored) { return false; }
+            p = new ProcessBuilder(cmd)
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                    .redirectError(ProcessBuilder.Redirect.DISCARD)
+                    .start();
+            if (!p.waitFor(timeoutSec, TimeUnit.SECONDS)) {
+                p.destroyForcibly();
+                return -1;
+            }
+            return p.exitValue();
+        } catch (Exception ignored) {
+            return -1;
+        } finally {
+            if (p != null && p.isAlive()) {
+                try { p.destroyForcibly(); } catch (Exception ignored) {}
+            }
+        }
+    }
+
+    private static void runQuiet(long timeoutSec, String... cmd) {
+        runQuietCode(timeoutSec, cmd);
     }
 
     // ==================== 公共工具 ====================
@@ -84,8 +115,7 @@ public class DockerManager {
 
     public static void ensureImage(String image, File localTar, Consumer<String> logger) throws Exception {
         if (!dockerAvailable) throw new RuntimeException("Docker 不可用");
-        Process inspect = new ProcessBuilder(getDockerCmd(), "image", "inspect", image).redirectErrorStream(true).start();
-        if (inspect.waitFor(5, TimeUnit.SECONDS) && inspect.exitValue() == 0) {
+        if (runQuietCode(5, getDockerCmd(), "image", "inspect", image) == 0) {
             if (logger != null) logger.accept("[Docker] 镜像已存在: " + image);
             return;
         }
@@ -108,7 +138,7 @@ public class DockerManager {
 
     public static String runContainer(String name, String image, File dataDir, int port, List<String> envs) throws Exception {
         if (!dockerAvailable) throw new RuntimeException("Docker 不可用");
-        new ProcessBuilder(getDockerCmd(), "rm", "-f", name).start().waitFor(10, TimeUnit.SECONDS);
+        runQuiet(10, getDockerCmd(), "rm", "-f", name);
 
         List<String> cmd = new ArrayList<>();
         cmd.add(getDockerCmd()); cmd.add("run"); cmd.add("-d");
@@ -145,27 +175,32 @@ public class DockerManager {
         return pb.redirectErrorStream(true).start();
     }
 
-    public static void execCommand(String name, String command) throws IOException {
-        ProcessBuilder pb = new ProcessBuilder(getDockerCmd(), "exec", name, "rcon-cli", command);
-        if (podmanHome != null) pb.environment().put("PATH", podmanHome.getAbsolutePath() + ":" + System.getenv("PATH"));
-        pb.redirectErrorStream(true).start();
+    public static void execCommand(String name, String command) {
+        runQuiet(20, getDockerCmd(), "exec", name, "rcon-cli", command);
     }
 
-    public static void stopContainer(String name) throws IOException {
-        new ProcessBuilder(getDockerCmd(), "stop", "-t", "10", name).start();
+    public static void stopContainer(String name) {
+        runQuiet(20, getDockerCmd(), "stop", "-t", "10", name);
     }
 
-    public static void killContainer(String name) throws IOException {
-        new ProcessBuilder(getDockerCmd(), "rm", "-f", name).start();
+    public static void killContainer(String name) {
+        runQuiet(30, getDockerCmd(), "rm", "-f", name);
     }
 
     public static long getContainerPid(String name) {
         try {
-            Process p = new ProcessBuilder(getDockerCmd(), "inspect", "-f", "{{.State.Pid}}", name).start();
+            Process p = new ProcessBuilder(getDockerCmd(), "inspect", "-f", "{{.State.Pid}}", name)
+                    .redirectError(ProcessBuilder.Redirect.DISCARD)
+                    .start();
+            String line = null;
             try (BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
-                String line = br.readLine();
-                if (line != null && !line.isEmpty()) return Long.parseLong(line.trim());
+                line = br.readLine();
             }
+            if (!p.waitFor(5, TimeUnit.SECONDS)) {
+                p.destroyForcibly();
+                return -1;
+            }
+            if (line != null && !line.isEmpty()) return Long.parseLong(line.trim());
         } catch (Exception ignored) {}
         return -1;
     }

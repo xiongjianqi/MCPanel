@@ -120,6 +120,13 @@ public class ServerProcess {
         return new File(getRunDir(), "shell.pid");
     }
 
+    /** 线程名里带的实例标识，线程 dump 时能直接看出是哪个实例 */
+    private String instanceKey() {
+        String id = config.get("_instance.id", "default");
+        if (id == null || id.isEmpty()) return "default";
+        return id.replaceAll("[^A-Za-z0-9_.-]", "_");
+    }
+
     public synchronized void runInstaller(String[] command, File workDir, long timeoutMs,
                                           Consumer<Integer> onExit) {
         if (installing) throw new IllegalStateException("已有安装进程在运行");
@@ -145,7 +152,7 @@ public class ServerProcess {
             return;
         }
 
-        com.mcpanel.util.Async.worker("mc-log-reader", () -> {
+        com.mcpanel.util.Async.worker("installer-log-reader", () -> {
             try (BufferedReader br = new BufferedReader(
                     new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
                 String line;
@@ -212,6 +219,14 @@ public class ServerProcess {
 
     private void doStart() {
         if (running || starting || installing) return;
+        // 线程配额已满时直接拒绝启动：否则日志读取线程拿不到配额，子进程写满 stdout 管道后
+        // 会卡住，表现为"点了启动但服务端不动"，比明确报错更难排查。
+        if (com.mcpanel.util.Async.workerCount() >= com.mcpanel.util.Async.maxWorkers()) {
+            failStart("阻塞型线程配额已满（" + com.mcpanel.util.Async.workerCount() + "/"
+                    + com.mcpanel.util.Async.maxWorkers()
+                    + "），请先停止不用的实例，或用 -Dpanel.max.blocking.threads 调大上限");
+            return;
+        }
 
         if (!isVelocity && needsEula) {
             if (!checkEulaFile()) {
@@ -256,7 +271,7 @@ public class ServerProcess {
             });
 
             logProcess = DockerManager.streamLogs(containerName);
-            com.mcpanel.util.Async.worker("mc-log-reader", () -> {
+            com.mcpanel.util.Async.worker("mc-log-reader-" + instanceKey(), () -> {
                 try (BufferedReader br = new BufferedReader(
                         new InputStreamReader(logProcess.getInputStream(), StandardCharsets.UTF_8))) {
                     String line;
@@ -335,6 +350,10 @@ public class ServerProcess {
             failStart("服务端目录不存在: " + workDir);
             return;
         }
+
+        // 启动前先处理 pid 文件里残留的旧 java 进程（面板重启/上次强杀后可能还活着），
+        // 否则每次"停不下来 -> 再启动"都会多留一个 JVM（几十条线程）和一个日志读取线程。
+        if (!running && !starting) stopPidFileProcessGracefully(15);
 
         setState(true, true);
         startTime = System.currentTimeMillis();
@@ -499,10 +518,18 @@ public class ServerProcess {
 
             final long myStart = startTime;
             com.mcpanel.util.Async.later(STARTUP_TIMEOUT_MS, () -> {
-                if (starting && running && startTime == myStart) setState(true, false);
+                if (startTime != myStart || !starting) return;
+                if (actualJavaPid <= 0) {
+                    // 启动命令卡住（su 等密码、命令等待输入等）时日志线程会永远阻塞在 readLine 上，
+                    // 这正是"每次启动都漏一条线程"的来源，所以超时必须强制收尾。
+                    broadcast("[Panel] ✗ 启动超时：未检测到 Java 进程（启动命令可能卡在 su 认证或等待输入），已强制清理");
+                    kill();
+                    return;
+                }
+                if (running) setState(true, false);
             });
 
-            com.mcpanel.util.Async.worker("mc-log-reader", () -> {
+            com.mcpanel.util.Async.worker("mc-log-reader-" + instanceKey(), () -> {
                 boolean eulaPending = false;
                 try (BufferedReader br = new BufferedReader(
                         new InputStreamReader(proc.getInputStream(), StandardCharsets.UTF_8))) {
@@ -655,12 +682,16 @@ public class ServerProcess {
         String safeCmd = cmd.replace("\n", "").replace("\r", "");
 
         if (isContainerMode()) {
-            try {
-                DockerManager.execCommand(
-                        "mcpanel-" + config.get("_instance.id", "default"), safeCmd);
-            } catch (Exception e) {
-                broadcast("[Panel] 发送容器命令失败: " + e.getMessage());
-            }
+            // ★ 修复：docker exec 以前直接在调用线程里跑（可能是 WebSocket IO 线程），
+            // 命令卡住时会把 IO 线程堵住；改为串行后台队列，既保持顺序又不阻塞网络线程。
+            final String containerName = "mcpanel-" + config.get("_instance.id", "default");
+            com.mcpanel.util.Async.serial(() -> {
+                try {
+                    DockerManager.execCommand(containerName, safeCmd);
+                } catch (Exception e) {
+                    broadcast("[Panel] 发送容器命令失败: " + e.getMessage());
+                }
+            });
             return;
         }
 
@@ -681,6 +712,8 @@ public class ServerProcess {
                         "mcpanel-" + config.get("_instance.id", "default"));
             } catch (Exception ignored) {}
             setState(false, false);
+            destroyTree(logProcess);
+            logProcess = null;
             return;
         }
 
@@ -709,34 +742,143 @@ public class ServerProcess {
 
     public void kill() {
         if (installerProcess != null && installing) {
-            try { installerProcess.destroyForcibly(); } catch (Exception ignored) {}
+            destroyTree(installerProcess);
+            installerProcess = null;
             return;
         }
-        if (running || starting) {
-            String instId = config.get("_instance.id", "");
-            Instance inst = InstanceManager.getInstance().getInstance(instId);
-            if (inst != null && inst.sysUser != null) {
+
+        // 面板认为"已经停止"时也兜底清理一次：旧版本只 kill su 壳，java 子进程会活下来，
+        // 表现为实例已关闭但进程/线程数继续上涨。
+        boolean live = running || starting;
+        String instId = config.get("_instance.id", "");
+        Instance inst = InstanceManager.getInstance().getInstance(instId);
+
+        if (live && inst != null && inst.sysUser != null) {
+            boolean safeToKill = !"root".equals(inst.sysUser)
+                    && !inst.sysUser.equals(System.getProperty("user.name"));
+            if (safeToKill) {
                 try {
                     new ProcessBuilder("pkill", "-9", "-u", inst.sysUser).start();
                 } catch (Exception ignored) {}
             }
-
-            if (isContainerMode()) {
-                try {
-                    DockerManager.killContainer(
-                            "mcpanel-" + config.get("_instance.id", "default"));
-                } catch (Exception ignored) {}
-                setState(false, false);
-                return;
-            }
-            if (actualJavaPid > 0) {
-                try {
-                    ProcessHandle.of(actualJavaPid).ifPresent(ProcessHandle::destroyForcibly);
-                } catch (Exception ignored) {}
-            }
-            if (process != null) process.destroyForcibly();
-            setState(false, false);
         }
+
+        if (isContainerMode()) {
+            try {
+                DockerManager.killContainer(
+                        "mcpanel-" + config.get("_instance.id", "default"));
+            } catch (Exception ignored) {}
+            destroyTree(logProcess);
+            logProcess = null;
+            setState(false, false);
+            return;
+        }
+
+        killPidFileProcess();
+        if (actualJavaPid > 0) {
+            try {
+                ProcessHandle.of(actualJavaPid).ifPresent(h -> {
+                    if (h.isAlive()) destroyTree(h);
+                });
+            } catch (Throwable ignored) {}
+        }
+        destroyTree(process);
+        destroyTree(logProcess);
+        logProcess = null;
+        if (processInput != null) {
+            try { processInput.close(); } catch (Exception ignored) {}
+            processInput = null;
+        }
+        actualJavaPid = -1;
+        setState(false, false);
+    }
+
+    /** 进程树强制终止：先杀子孙进程（java、bash 等），再杀外壳，避免只杀 su 留下孤儿 JVM */
+    private static void destroyTree(Process p) {
+        if (p == null) return;
+        try {
+            destroyTree(p.toHandle());
+        } catch (Throwable ignored) {}
+    }
+
+    private static void destroyTree(ProcessHandle root) {
+        if (root == null) return;
+        List<ProcessHandle> children = new ArrayList<>();
+        try { root.descendants().forEach(children::add); } catch (Throwable ignored) {}
+        Collections.reverse(children);
+        for (ProcessHandle h : children) {
+            try { h.destroyForcibly(); } catch (Throwable ignored) {}
+        }
+        try { root.destroyForcibly(); } catch (Throwable ignored) {}
+    }
+
+    /** 读 pid 文件里的进程号（su 壳 exec 之后就是 java 的 pid），无效返回 -1 */
+    private long readPidFilePid() {
+        File pidFile = getPidFile();
+        if (!pidFile.exists()) return -1L;
+        try {
+            String s = new String(Files.readAllBytes(pidFile.toPath()), StandardCharsets.UTF_8).trim();
+            if (s.isEmpty()) return -1L;
+            long pid = Long.parseLong(s);
+            return pid > 0 ? pid : -1L;
+        } catch (Throwable ignored) {
+            return -1L;
+        }
+    }
+
+    /** 只在命令行确实是 java 时才动手，避免 pid 被复用后误杀无关进程 */
+    private static boolean isJavaHandle(ProcessHandle h) {
+        try {
+            return h.info().commandLine()
+                    .map(c -> c.toLowerCase(Locale.ROOT).contains("java"))
+                    .orElse(false);
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private void killPidFileProcess() {
+        long pid = readPidFilePid();
+        if (pid <= 0) return;
+        try {
+            ProcessHandle.of(pid).ifPresent(h -> {
+                try {
+                    if (h.isAlive() && isJavaHandle(h)) destroyTree(h);
+                } catch (Throwable ignored) {}
+            });
+        } catch (Throwable ignored) {}
+    }
+
+    /**
+     * 启动前处理上一次残留的服务端：先发 SIGTERM 给世界保存留时间，超时再杀进程树。
+     * 之所以不直接 -9：残留 JVM 可能还在正常读写区域文件，硬杀有损坏世界的风险。
+     */
+    private void stopPidFileProcessGracefully(int waitSeconds) {
+        long pid = readPidFilePid();
+        if (pid <= 0) return;
+        try {
+            java.util.Optional<ProcessHandle> ph = ProcessHandle.of(pid);
+            if (!ph.isPresent()) return;
+            ProcessHandle h = ph.get();
+            if (!h.isAlive() || !isJavaHandle(h)) return;
+            broadcast("[Panel] 发现上次残留的服务端进程 (pid=" + pid + ")，正在尝试正常关闭（最多 "
+                    + waitSeconds + " 秒）...");
+            h.destroy();
+            long deadline = System.currentTimeMillis() + Math.max(1, waitSeconds) * 1000L;
+            while (System.currentTimeMillis() < deadline) {
+                if (!h.isAlive()) break;
+                try {
+                    Thread.sleep(200L);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+            if (h.isAlive()) {
+                broadcast("[Panel] 残留进程未响应正常关闭，强制终止 (pid=" + pid + ")");
+                destroyTree(h);
+            }
+        } catch (Throwable ignored) {}
     }
 
     public void restart() {

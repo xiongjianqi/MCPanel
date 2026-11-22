@@ -17,6 +17,14 @@ import java.util.function.Consumer;
 public class AptUtil {
     private static final ReentrantLock APT_LOCK = new ReentrantLock();
 
+    // ★ 修复：以前每次探测镜像都 new HttpClient()，而每个 HttpClient 会拉起一条
+    // SelectorManager 线程（要等对象被 GC/close 才释放）；配置项反复保存时线程会慢性增长。
+    // 这里全进程复用一个客户端。
+    private static final HttpClient HTTP = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(2))
+            .followRedirects(HttpClient.Redirect.NORMAL)
+            .build();
+
     public static void lockApt() { APT_LOCK.lock(); }
     public static void unlockApt() { if (APT_LOCK.isHeldByCurrentThread()) APT_LOCK.unlock(); }
     
@@ -65,14 +73,12 @@ public class AptUtil {
                 mirrors.add(new Mirror("官方源", "http://archive.ubuntu.com/ubuntu/", "http://security.ubuntu.com/ubuntu/"));
             }
 
-            HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).followRedirects(HttpClient.Redirect.NORMAL).build();
-
             for (Mirror m : mirrors) {
                 try {
                     String testUrl = m.mainUrl + "dists/" + codename + "/Release";
                     HttpRequest req = HttpRequest.newBuilder().uri(URI.create(testUrl)).timeout(Duration.ofSeconds(3)).method("HEAD", HttpRequest.BodyPublishers.noBody()).build();
                     long start = System.currentTimeMillis();
-                    HttpResponse<Void> resp = client.send(req, HttpResponse.BodyHandlers.discarding());
+                    HttpResponse<Void> resp = HTTP.send(req, HttpResponse.BodyHandlers.discarding());
                     long cost = System.currentTimeMillis() - start;
                     if (resp.statusCode() >= 200 && resp.statusCode() < 400) { m.latency = cost; }
                 } catch (Exception ignored) {}

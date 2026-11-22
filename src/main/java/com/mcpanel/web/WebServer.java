@@ -60,7 +60,6 @@ public class WebServer {
         int shareWorkers = Math.max(4, Math.min(6, workerThreads / 2));
         System.out.println("[Panel] Web 线程配置: IO=" + ioThreads + ", Worker=" + workerThreads
                 + ", 分享服务 Worker=" + shareWorkers + "（可用 web.io.threads / web.worker.threads 覆盖）");
-        logThreadLimits();
 
         try {
             Undertow.Builder shareBuilder = Undertow.builder()
@@ -91,6 +90,9 @@ public class WebServer {
 
         undertow.start();
         System.out.println("[Panel] Web 管理界面已启动，端口: " + port);
+
+        // 两个 Undertow 都起来之后再统计，数字才包含完整的线程池
+        logThreadLimits();
     }
 
     // 启动时把系统/容器的进程线程上限打出来，出现 "unable to create native thread" 时一眼能对上
@@ -111,6 +113,11 @@ public class WebServer {
                         java.nio.charset.StandardCharsets.UTF_8).trim();
                 if (!v.isEmpty()) System.out.println("[Panel] cgroup pids.max: " + v);
             }
+            // 面板只能看到自己 JVM 的线程；`ps -eLf` 看到的是整机/容器的线程总和。
+            // 这里把"其他 java 进程"的线程数也打出来，便于区分是面板漏线程还是残留 JVM。
+            System.out.println("[Panel] 线程概览: 本进程线程 "
+                    + java.lang.management.ManagementFactory.getThreadMXBean().getThreadCount()
+                    + " 条；" + com.mcpanel.util.ProcStats.summary());
         } catch (Throwable ignored) {}
     }
 

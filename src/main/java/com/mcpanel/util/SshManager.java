@@ -8,9 +8,40 @@ import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 public class SshManager {
+    /**
+     * ★ 线程治理：所有一次性系统命令统一走这里（输出丢弃 + 超时强杀）。
+     * 旧写法 .start().waitFor() 有两个隐患：命令输出写满管道会让子进程永久阻塞；
+     * 没有超时的 waitFor 会把调用线程一起挂死，进而让上游线程池被占满。
+     */
+    private static int runQuietCode(long timeoutSec, String... cmd) {
+        Process p = null;
+        try {
+            p = new ProcessBuilder(cmd)
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                    .redirectError(ProcessBuilder.Redirect.DISCARD)
+                    .start();
+            if (!p.waitFor(timeoutSec, TimeUnit.SECONDS)) {
+                p.destroyForcibly();
+                return -1;
+            }
+            return p.exitValue();
+        } catch (Exception ignored) {
+            return -1;
+        } finally {
+            if (p != null && p.isAlive()) {
+                try { p.destroyForcibly(); } catch (Exception ignored) {}
+            }
+        }
+    }
+
+    private static void runQuiet(long timeoutSec, String... cmd) {
+        runQuietCode(timeoutSec, cmd);
+    }
+
     public static synchronized void initSsh(Consumer<String> logger) {
         try {
             EnvironmentHealer.heal(logger);
@@ -33,7 +64,7 @@ public class SshManager {
 
                 if (persistKey.exists()) {
                     Files.copy(persistKey.toPath(), sysKey.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                    new ProcessBuilder("chmod", "600", sysKey.getAbsolutePath()).start().waitFor();
+                    runQuiet(10, "chmod", "600", sysKey.getAbsolutePath());
                 } else if (sysKey.exists()) {
                     Files.copy(sysKey.toPath(), persistKey.toPath(), StandardCopyOption.REPLACE_EXISTING);
                 } else {
@@ -42,7 +73,7 @@ public class SshManager {
             }
 
             if (needGenerate) {
-                new ProcessBuilder("ssh-keygen", "-A").start().waitFor();
+                runQuiet(60, "ssh-keygen", "-A");
                 for (String keyName : keyNames) {
                     File sysKey = new File(sshDir, keyName);
                     if (sysKey.exists()) {
@@ -58,8 +89,8 @@ public class SshManager {
                     File rootSshDir = new File("/root/.ssh");
                     if (!rootSshDir.exists()) rootSshDir.mkdirs();
                     
-                    new ProcessBuilder("chmod", "700", "/root/.ssh").start().waitFor();
-                    new ProcessBuilder("chown", "root:root", "/root/.ssh").start().waitFor();
+                    runQuiet(10, "chmod", "700", "/root/.ssh");
+                    runQuiet(10, "chown", "root:root", "/root/.ssh");
 
                     File authKeys = new File(rootSshDir, "authorized_keys");
                     boolean needWrite = true;
@@ -76,8 +107,8 @@ public class SshManager {
                         Files.write(authKeys.toPath(), content.getBytes(StandardCharsets.UTF_8));
                     }
 
-                    new ProcessBuilder("chmod", "600", authKeys.getAbsolutePath()).start().waitFor();
-                    new ProcessBuilder("chown", "root:root", authKeys.getAbsolutePath()).start().waitFor();
+                    runQuiet(10, "chmod", "600", authKeys.getAbsolutePath());
+                    runQuiet(10, "chown", "root:root", authKeys.getAbsolutePath());
                     logger.accept("[SshManager] ✓ 已自动恢复 Root SSH 密钥并修复权限");
                 } catch (Exception e) {}
             }
@@ -117,15 +148,12 @@ public class SshManager {
                 }
             }
 
-            try {
-                new ProcessBuilder("pkill", "-9", "-x", "sshd").start().waitFor();
-            } catch (Exception ignored) {}
+            runQuiet(10, "pkill", "-9", "-x", "sshd");
 
-            new ProcessBuilder("/usr/sbin/sshd").start().waitFor();
-            
+            runQuiet(30, "/usr/sbin/sshd");
+
             Thread.sleep(1000);
-            Process ps = new ProcessBuilder("pgrep", "-x", "sshd").start();
-            boolean running = ps.waitFor() == 0 && ps.exitValue() == 0;
+            boolean running = runQuietCode(10, "pgrep", "-x", "sshd") == 0;
 
             if (running) {
                 logger.accept("[SshManager] ✓ SSH 服务已在端口 " + port + " 成功运行");

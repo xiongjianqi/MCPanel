@@ -23,6 +23,10 @@
 - Java 11 及以上，编译需要 Maven 3
 - 图形验证码用 `easy-captcha`，自带字体，启动时自动 `java.awt.headless=true`
 - 线程数可用 `web.io.threads` / `web.worker.threads` 调整
+- 日志读取、终端落盘这类阻塞型任务有硬上限 `panel.max.blocking.threads`（默认 256），
+  超过会拒绝并打印提示，避免反复启停/插件高频调用把原生线程吃光
+- 线程数超过 80 或每分钟增长很快时，面板日志会打印按名称聚合的线程统计（增长过快时附明细），
+  `/api/panel/status` 也会返回 `threads`、`blocking_workers`、`blocking_worker_max`
 
 ## 快速开始
 

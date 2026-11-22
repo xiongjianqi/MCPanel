@@ -36,7 +36,12 @@ public class SshdLogParser {
                     }
                 } catch (Exception ignored) {}
             });
-            
+            if (readerThread == null) {
+                sshdProcess.destroyForcibly();
+                sshdProcess = null;
+                System.err.println("[SshdLogParser] 阻塞型线程已达上限，已放弃启动 sshd 日志采集");
+            }
+
         } catch (Exception e) {
             System.err.println("[SshdLogParser] 启动 sshd 失败: " + e.getMessage());
         }

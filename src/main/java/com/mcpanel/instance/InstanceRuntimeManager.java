@@ -94,7 +94,7 @@ public class InstanceRuntimeManager {
         InstanceRuntime rt = runtimes.remove(id);
         if (rt == null) return;
         try {
-            if (rt.mcServer.isRunning()) rt.mcServer.kill();
+            rt.close();
         } catch (Exception ignored) {}
     }
 
@@ -115,7 +115,7 @@ public class InstanceRuntimeManager {
     public void shutdownAll() {
         List<Thread> workers = new ArrayList<>();
         for (final InstanceRuntime rt : runtimes.values()) {
-            Thread t = com.mcpanel.util.Async.worker("shutdown-all-" + rt.inst.id, () -> {
+            Runnable task = () -> {
                 try {
                     String displayName = (rt.inst.name != null && !rt.inst.name.isEmpty()) ? rt.inst.name : rt.inst.id;
                     if (rt.mcServer.isRunning()) {
@@ -127,8 +127,10 @@ public class InstanceRuntimeManager {
                     }
                     // ★ 修复：如果本来就停止，不输出任何终端日志
                 } catch (Throwable ignored) {}
-            });
-            workers.add(t);
+            };
+            Thread t = com.mcpanel.util.Async.worker("shutdown-all-" + rt.inst.id, task);
+            if (t != null) workers.add(t);
+            else task.run(); // 线程配额已满时退化为串行执行，不能被"拒绝"卡住退出流程
         }
         for (Thread t : workers) {
             try { t.join(70000); } catch (InterruptedException ignored) {}

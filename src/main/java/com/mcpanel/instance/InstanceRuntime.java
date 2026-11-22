@@ -122,4 +122,13 @@ public class InstanceRuntime {
     }
 
     public boolean isStarted() { return started; }
+
+    /**
+     * 释放运行时资源：杀进程树、摘监听器、停常驻写盘线程。
+     * 实例被删除 / 移除运行时的时候必须调用，否则每次新建实例都会多留一条线程和几个监听器。
+     */
+    public void close() {
+        try { mcServer.kill(); } catch (Throwable ignored) {}
+        try { terminalHandler.close(); } catch (Throwable ignored) {}
+    }
 }

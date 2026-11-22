@@ -91,13 +91,26 @@ public class DashboardHandler {
         }
     }
 
+    private static volatile int lastThreadCount = 0;
+    private static volatile long lastThreadAt = 0L;
+
     private static void checkThreadPressure() {
         try {
             java.lang.management.ThreadMXBean mx = java.lang.management.ManagementFactory.getThreadMXBean();
             int n = mx.getThreadCount();
-            if (n < 120) return;
+            long now = System.currentTimeMillis();
+            int prev = lastThreadCount;
+            long prevAt = lastThreadAt;
+            lastThreadCount = n;
+            lastThreadAt = now;
+            double perMinute = (prevAt > 0 && now > prevAt) ? (n - prev) * 60000.0 / (now - prevAt) : 0.0;
+
+            // 绝对数量偏高，或者虽然还没到 80 但增长很快（慢性泄漏的典型特征）都记一笔
+            if (n < 80 && perMinute < 5.0) return;
+
+            java.lang.management.ThreadInfo[] infos = mx.dumpAllThreads(false, false);
             Map<String, Integer> counts = new HashMap<>();
-            for (java.lang.management.ThreadInfo ti : mx.dumpAllThreads(false, false)) {
+            for (java.lang.management.ThreadInfo ti : infos) {
                 String name = ti.getThreadName();
                 int idx = Math.max(name.lastIndexOf('-'), name.lastIndexOf('#'));
                 if (idx > 0) name = name.substring(0, idx);
@@ -108,7 +121,23 @@ public class DashboardHandler {
                     .sorted((a, b) -> b.getValue() - a.getValue())
                     .limit(8)
                     .forEach(e -> sb.append(e.getKey()).append('×').append(e.getValue()).append("  "));
-            System.err.println("[Panel] ⚠ 线程数偏高: " + n + " | " + sb);
+            System.err.println("[Panel] ⚠ 线程数偏高: " + n + "（较上次 "
+                    + (prevAt > 0 ? String.valueOf(n - prev) : "?") + "，约 "
+                    + String.format(java.util.Locale.ROOT, "%.1f", perMinute) + "/分钟；阻塞型任务 "
+                    + com.mcpanel.util.Async.workerCount() + "/"
+                    + com.mcpanel.util.Async.maxWorkers() + "） | " + sb);
+
+            // 增长很快时把具体线程名打出来（最多 40 条），足够定位到是哪个组件在漏线程
+            if (perMinute >= 20.0) {
+                StringBuilder detail = new StringBuilder();
+                int shown = 0;
+                for (java.lang.management.ThreadInfo ti : infos) {
+                    if (shown++ >= 40) break;
+                    detail.append("\n  - ").append(ti.getThreadName())
+                          .append(" [").append(ti.getThreadState()).append(']');
+                }
+                System.err.println("[Panel] 线程明细:" + detail);
+            }
         } catch (Throwable ignored) {}
     }
 

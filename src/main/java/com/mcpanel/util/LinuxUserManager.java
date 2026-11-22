@@ -77,7 +77,7 @@ public class LinuxUserManager {
                 p.destroyForcibly();
                 return null;
             }
-            t.join(1000);
+            if (t != null) t.join(1000);
             return out.toString();
         } catch (Exception ex) {
             return null;

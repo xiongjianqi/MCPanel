@@ -160,7 +160,7 @@ public class JavaManager {
                                 }
                             } catch (Exception ignored) {}
                         });
-                        threadList.add(t);
+                        if (t != null) threadList.add(t);
                     }
                     for (Thread t : threadList) t.join();
                     raf.close();

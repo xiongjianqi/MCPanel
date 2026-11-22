@@ -81,9 +81,14 @@ public class AccountHandler {
                         boolean ok = com.mcpanel.util.SmtpManager.sendEmail(email, "MC Panel 绑定邮箱", "<h3>绑定验证码</h3><p>您的验证码是：<b>" + code + "</b>，5分钟内有效。</p>");
                         if (ok) {
                             ok(ex);
-                            new java.util.Timer().schedule(new java.util.TimerTask() {
-                                @Override public void run() { emailCodes.remove(email); emailAttempts.remove(email); emailLastSent.remove(email); }
-                            }, 300_000);
+                            // ★ 修复：以前每次发信都 new java.util.Timer()（一条非 daemon 线程，
+                            // 只有被 GC 后才会退出），现在统一走共享调度器，不再新增线程。
+                            final long sentAt = now;
+                            com.mcpanel.util.Async.later(300_000L, () -> {
+                                emailCodes.remove(email, code);
+                                emailAttempts.remove(email);
+                                emailLastSent.remove(email, sentAt);
+                            });
                         } else {
                             jsonError(ex, "邮件发送失败，请检查 SMTP 配置");
                         }
