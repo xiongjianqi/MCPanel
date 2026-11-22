@@ -556,10 +556,15 @@ public class ServerProcess {
                             } catch (Exception ignored) {}
                         }
                         
-                        // 兜底尝试
+                        // 兜底尝试：进程本身就是 java（没走 su / bash 包装）时，
+                        // descendants() 只会返回子进程，永远找不到，所以要先看自己
                         if (process != null && process.isAlive()) {
+                            if (isJavaHandle(process.toHandle())) {
+                                actualJavaPid = process.pid();
+                                break;
+                            }
                             Optional<ProcessHandle> javaChild = process.toHandle().descendants()
-                                    .filter(d -> d.info().command().map(c -> c.contains("java")).orElse(false))
+                                    .filter(ServerProcess::isJavaHandle)
                                     .findFirst();
                             if (javaChild.isPresent()) {
                                 actualJavaPid = javaChild.get().pid();
@@ -1020,8 +1025,14 @@ public class ServerProcess {
         
         if (process != null && (running || starting)) {
             try {
-                Optional<ProcessHandle> javaChild = process.toHandle().descendants()
-                        .filter(d -> d.info().command().map(c -> c.contains("java")).orElse(false))
+                ProcessHandle self = process.toHandle();
+                // 直接以 java 启动时，进程自己就是 java；descendants() 不包含自己
+                if (isJavaHandle(self)) {
+                    actualJavaPid = process.pid();
+                    return actualJavaPid;
+                }
+                Optional<ProcessHandle> javaChild = self.descendants()
+                        .filter(ServerProcess::isJavaHandle)
                         .findFirst();
                 if (javaChild.isPresent()) {
                     actualJavaPid = javaChild.get().pid();
