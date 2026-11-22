@@ -42,6 +42,8 @@ public class DashboardHandler {
         public long lastProcInBytes = -1;
         public long lastProcOutBytes = -1;
         public long lastNetTime = 0;
+        public double netInRate = 0;
+        public double netOutRate = 0;
         public long lastRecordMinute = 0;
         public long lastMemTotal = 0;
         
@@ -125,7 +127,8 @@ public class DashboardHandler {
                     + (prevAt > 0 ? String.valueOf(n - prev) : "?") + "，约 "
                     + String.format(java.util.Locale.ROOT, "%.1f", perMinute) + "/分钟；阻塞型任务 "
                     + com.mcpanel.util.Async.workerCount() + "/"
-                    + com.mcpanel.util.Async.maxWorkers() + "） | " + sb);
+                    + com.mcpanel.util.Async.maxWorkers() + "） | " + sb
+                    + " | " + com.mcpanel.util.ProcStats.summary());
 
             // 增长很快时把具体线程名打出来（最多 40 条），足够定位到是哪个组件在漏线程
             if (perMinute >= 20.0) {
@@ -164,6 +167,10 @@ public class DashboardHandler {
             if (!running) {
                 st.lastProcCpuTime = -1;
                 st.lastProcInBytes = -1;
+                st.lastProcOutBytes = -1;
+                st.lastNetTime = 0;
+                st.netInRate = 0;
+                st.netOutRate = 0;
             }
             pt.cpu = 0.0;
             pt.mem = 0.0;
@@ -177,23 +184,25 @@ public class DashboardHandler {
             pt.memTotal = st.lastMemTotal;
             if (pt.mem > pt.memTotal) pt.mem = pt.memTotal;
 
-            long[] netBytes = threadPressureHigh()
-                    ? new long[]{st.lastProcInBytes < 0 ? 0 : st.lastProcInBytes,
-                                 st.lastProcOutBytes < 0 ? 0 : st.lastProcOutBytes}
-                    : readProcessNetBytes(pid);
-            long now = System.currentTimeMillis();
-            
-            if (st.lastNetTime > 0 && now > st.lastNetTime && st.lastProcInBytes != -1 && st.lastProcOutBytes != -1) {
-                double secs = (now - st.lastNetTime) / 1000.0;
-                pt.netIn = (long) (Math.max(0, netBytes[0] - st.lastProcInBytes) / secs);
-                pt.netOut = (long) (Math.max(0, netBytes[1] - st.lastProcOutBytes) / secs);
-            } else {
-                pt.netIn = 0L;
-                pt.netOut = 0L;
+            // 网络采样走全进程共享快照：最多 5 秒采集一次，不再每个实例每秒拉一个 ss 子进程
+            if (!threadPressureHigh()) {
+                long[] netBytes = processNetSnapshot().get(pid);
+                long netAt = netSnapshotAt;
+                if (netBytes != null && netAt > st.lastNetTime) {
+                    if (st.lastNetTime > 0 && st.lastProcInBytes >= 0 && st.lastProcOutBytes >= 0) {
+                        double secs = (netAt - st.lastNetTime) / 1000.0;
+                        if (secs > 0) {
+                            st.netInRate = Math.max(0, netBytes[0] - st.lastProcInBytes) / secs;
+                            st.netOutRate = Math.max(0, netBytes[1] - st.lastProcOutBytes) / secs;
+                        }
+                    }
+                    st.lastProcInBytes = netBytes[0];
+                    st.lastProcOutBytes = netBytes[1];
+                    st.lastNetTime = netAt;
+                }
             }
-            st.lastProcInBytes = netBytes[0];
-            st.lastProcOutBytes = netBytes[1];
-            st.lastNetTime = now;
+            pt.netIn = (long) st.netInRate;
+            pt.netOut = (long) st.netOutRate;
             
             pt.cpu = readProcessCpu(pid, st);
             if (pt.cpu < 0) pt.cpu = 0;
@@ -406,27 +415,72 @@ public class DashboardHandler {
         }
     }
 
-    private static long[] readProcessNetBytes(long pid) {
-        long totalIn = 0, totalOut = 0;
-        try {
-            Process p = new ProcessBuilder("ss", "-tinp").redirectErrorStream(true).start();
-            try (BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
-                String line;
-                boolean matchPid = false;
-                while ((line = br.readLine()) != null) {
-                    if (line.contains("pid=" + pid + ",") || line.contains("pid=" + pid + ")")) matchPid = true;
-                    if (matchPid) {
-                        Matcher mIn = Pattern.compile("bytes_received:(\\d+)").matcher(line);
-                        if (mIn.find()) totalIn += Long.parseLong(mIn.group(1));
-                        Matcher mOut = Pattern.compile("bytes_sent:(\\d+)").matcher(line);
-                        if (mOut.find()) totalOut += Long.parseLong(mOut.group(1));
+    // ==================== 网络采样（共享快照） ====================
+    // ss 每次都会创建一个子进程，而 JVM 每个子进程都会占一条 process reaper 线程。
+    // 旧实现是"每个运行中的实例每秒启动一次 ss"：实例越多，线程/进程越涨。
+    // 现在全进程共享，最多每 5 秒采集一次，所有实例读同一份快照。
+    private static final long NET_SAMPLE_INTERVAL_MS = 5000L;
+    private static final Object NET_LOCK = new Object();
+    private static volatile long netSnapshotAt = 0L;
+    private static volatile Map<Long, long[]> netSnapshot = Collections.emptyMap();
+    private static final Pattern SS_PID = Pattern.compile("pid=(\\d+)");
+    private static final Pattern SS_IN = Pattern.compile("bytes_received:(\\d+)");
+    private static final Pattern SS_OUT = Pattern.compile("bytes_sent:(\\d+)");
+
+    private static Map<Long, long[]> processNetSnapshot() {
+        long now = System.currentTimeMillis();
+        if (now - netSnapshotAt < NET_SAMPLE_INTERVAL_MS) return netSnapshot;
+        synchronized (NET_LOCK) {
+            long startedAt = System.currentTimeMillis();
+            if (startedAt - netSnapshotAt < NET_SAMPLE_INTERVAL_MS) return netSnapshot;
+            Map<Long, long[]> map = new HashMap<>();
+            Process p = null;
+            try {
+                p = new ProcessBuilder("ss", "-tinp").redirectErrorStream(true).start();
+                try (BufferedReader br = new BufferedReader(
+                        new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
+                    String line;
+                    long curPid = -1;
+                    while ((line = br.readLine()) != null) {
+                        if (line.startsWith("ESTAB") || line.startsWith("LISTEN")
+                                || line.startsWith("TIME-WAIT") || line.startsWith("CLOSE-WAIT")
+                                || line.startsWith("FIN-WAIT") || line.trim().isEmpty()) {
+                            curPid = -1;
+                        }
+                        if (curPid <= 0) {
+                            Matcher pm = SS_PID.matcher(line);
+                            if (pm.find()) {
+                                try { curPid = Long.parseLong(pm.group(1)); } catch (Exception ignored) {}
+                            }
+                        }
+                        if (curPid > 0) {
+                            long[] acc = map.get(curPid);
+                            if (acc == null) {
+                                acc = new long[2];
+                                map.put(curPid, acc);
+                            }
+                            Matcher mi = SS_IN.matcher(line);
+                            if (mi.find()) {
+                                try { acc[0] += Long.parseLong(mi.group(1)); } catch (Exception ignored) {}
+                            }
+                            Matcher mo = SS_OUT.matcher(line);
+                            if (mo.find()) {
+                                try { acc[1] += Long.parseLong(mo.group(1)); } catch (Exception ignored) {}
+                            }
+                        }
                     }
-                    if (line.startsWith("ESTAB") || line.startsWith("LISTEN") || line.startsWith("TIME-WAIT") || line.trim().isEmpty()) matchPid = false;
+                }
+                netSnapshot = map;
+            } catch (Throwable ignored) {
+                // ss 不存在或读取失败：保留旧快照，5 秒后重试
+            } finally {
+                if (p != null && p.isAlive()) {
+                    try { p.destroyForcibly(); } catch (Exception ignored) {}
                 }
             }
-            if (!p.waitFor(2, TimeUnit.SECONDS)) p.destroyForcibly();
-        } catch (Throwable ignored) {}
-        return new long[]{totalIn, totalOut};
+            netSnapshotAt = System.currentTimeMillis();
+            return netSnapshot;
+        }
     }
 
     private static long parseMaxHeap(String cmd, ConfigManager config) {
