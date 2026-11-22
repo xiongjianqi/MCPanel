@@ -213,13 +213,6 @@ function instanceListRefresh(force) {
           typeBadge.textContent = (inst.type === 'velocity') ? 'Velocity' : 'MC';
           bg.appendChild(typeBadge);
 
-          if (inst.isDefault) {
-            var defBadge = document.createElement('div');
-            defBadge.className = 'instance-default-badge';
-            defBadge.textContent = '默认';
-            bg.appendChild(defBadge);
-          }
-
           var st = document.createElement('div');
           st.className = 'instance-card-status';
           bg.appendChild(st);
@@ -242,20 +235,6 @@ function instanceListRefresh(force) {
           enterBtn.textContent = '进入';
           enterBtn.onclick = (function (id) { return function (e) { e.stopPropagation(); enterInstance(id); }; })(inst.id);
           ft.appendChild(enterBtn);
-
-          if (!inst.isDefault) {
-            var defBtn = document.createElement('button');
-            defBtn.className = 'btn small js-set-default';
-            defBtn.textContent = '设为默认';
-            defBtn.onclick = (function (id) { return function (e) { 
-              e.stopPropagation(); 
-              postApi('/api/instances/set-default', { id: id }).then(function(r) {
-                if (r && r.ok) { toast('已设为默认实例', 'ok'); instanceListRefresh(true); }
-                else toast((r && r.error) || '设置失败', 'err');
-              });
-            }; })(inst.id);
-            ft.appendChild(defBtn);
-          }
 
           if (canEdit) {
             var editBtn = document.createElement('button');
@@ -288,43 +267,6 @@ function instanceListRefresh(force) {
         card.querySelector('.instance-card-name').textContent = inst.name || inst.id;
         card.querySelector('.instance-card-desc').textContent = inst.desc || '（无描述）';
 
-        // 默认实例会变（可能是别的浏览器/标签页改的），轮询时同步徽标和按钮
-        var bgEl = card.querySelector('.instance-card-bg');
-        if (bgEl) {
-          var defBadgeEl = bgEl.querySelector('.instance-default-badge');
-          if (inst.isDefault && !defBadgeEl) {
-            defBadgeEl = document.createElement('div');
-            defBadgeEl.className = 'instance-default-badge';
-            defBadgeEl.textContent = '默认';
-            bgEl.appendChild(defBadgeEl);
-          } else if (!inst.isDefault && defBadgeEl) {
-            defBadgeEl.remove();
-          }
-        }
-
-        var ftEl = card.querySelector('.instance-card-footer');
-        if (ftEl) {
-          var defBtnEl = ftEl.querySelector('.js-set-default');
-          if (inst.isDefault && defBtnEl) {
-            defBtnEl.remove();
-          } else if (!inst.isDefault && !defBtnEl) {
-            var newDefBtn = document.createElement('button');
-            newDefBtn.className = 'btn small js-set-default';
-            newDefBtn.textContent = '设为默认';
-            newDefBtn.onclick = (function (id) { return function (e) {
-              e.stopPropagation();
-              postApi('/api/instances/set-default', { id: id }).then(function (r) {
-                if (r && r.ok) { toast('已设为默认实例', 'ok'); instanceListRefresh(true); }
-                else toast((r && r.error) || '设置失败', 'err');
-              });
-            }; })(inst.id);
-            var firstBtn = ftEl.firstElementChild;
-            if (firstBtn && firstBtn.nextSibling) ftEl.insertBefore(newDefBtn, firstBtn.nextSibling);
-            else ftEl.appendChild(newDefBtn);
-          }
-        }
-
-        
         var stEl = card.querySelector('.instance-card-status');
         if (stEl) {
             var state = 'stopped';

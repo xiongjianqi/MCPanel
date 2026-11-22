@@ -1,6 +1,6 @@
 MC PANEL 实例插件开发指南
 
-版本 2.0
+版本 2.1
 
 本指南只针对实例插件。通用插件机制（plugin.json、MCPlugin 生命周期、PanelPage、API 注册）请看通用开发指南。
 
@@ -94,6 +94,44 @@ ctx.registerPanelPage(
 
 如果要既在节点级也在实例级显示，用 scope("both")。
 
+3.7 实例启停
+
+ctx.listInstances() 能拿到所有实例的 id 和运行状态。启停接口都是异步的，
+返回 true 只代表请求已受理，不代表已经启动/停止完成：
+
+boolean running = ctx.isInstanceRunning("lobby");
+
+ctx.startInstance("lobby");    // 已运行则直接返回 true
+ctx.stopInstance("lobby");     // 走面板正常关闭流程（发关闭命令，默认 "stop"）
+ctx.restartInstance("lobby");  // 关闭 -> 等待 restart 延迟 -> 启动
+
+注意：
+· 停止是"先发关闭命令、超时再强杀"，不会一上来就 kill
+· 启动走完整面板流程（用户隔离、端口补丁、自动重启策略等）
+· 不要在 onLoad 里同步等启动完成，用 onServerStatus 或轮询 isInstanceRunning
+
+3.8 操作实例文件
+
+路径相对实例目录 instances/<实例ID>/，绝对路径和 ../ 越界一律失败：
+
+// 列目录（目录名以 "/" 结尾，目录排在前面）
+for (String name : ctx.listInstanceFiles("lobby", "server")) {
+    ctx.log(name);
+}
+
+// 读文本（UTF-8，最多 maxBytes 字节；超限或失败返回 null）
+String props = ctx.readInstanceFile("lobby", "server/server.properties", 256 * 1024);
+
+// 写文本（自动创建父目录）
+ctx.writeInstanceFile("lobby", "server/motd.txt", "欢迎来到大厅");
+
+// 建目录 / 删除（删除目录会递归）
+ctx.makeInstanceDir("lobby", "server/plugins/data");
+ctx.deleteInstanceFile("lobby", "server/plugins/old.jar");
+
+注意：服务器运行时不要改 world 和服务端配置。
+正确做法是先 ctx.stopInstance(...)，在 onServerStatus(false) 里改文件，再 ctx.startInstance(...)。
+
 四、监听服务器启停
 
 最常用的钩子。注意时机：
@@ -165,8 +203,9 @@ ctx.sendCommand("say 服务器将在 5 分钟后重启");
 
 七、不能做什么
 
-实例插件不能操作其他实例。
-即使你能算出别的实例路径，面板层的权限控制也不会绕过。
+实例插件不能绕过实例目录访问任意文件。
+ctx 的文件接口只允许操作 instances/<实例ID>/ 里的内容，
+绝对路径、../ 越界都会按失败处理。
 
 实例插件不能操作面板全局配置。
 改端口、改用户、改节点配置 → 必须开发面板插件。
@@ -317,5 +356,9 @@ public class ServerTransferPlugin implements MCPlugin {
     @Override public String getName() { return "ServerTransfer"; }
     @Override public String getId()   { return "srv"; }
 }
+
+提示：上面的示例直接用了 InstanceRuntimeManager 拿实例信息。更推荐用
+ctx.listInstances() / ctx.isInstanceRunning(id) / ctx.startInstance(id)
+这些插件接口，插件不用依赖面板内部类，后续升级也不会被打断。
 
 文档结束。

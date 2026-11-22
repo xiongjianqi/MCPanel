@@ -495,7 +495,6 @@ public class ServerProcess {
                                 String pidStr = new String(Files.readAllBytes(pidFile.toPath()), StandardCharsets.UTF_8).trim();
                                 if (!pidStr.isEmpty()) {
                                     actualJavaPid = Long.parseLong(pidStr);
-                                    System.out.println("[ServerProcess] 抓到 Java PID (文件): " + actualJavaPid);
                                     break;
                                 }
                             } catch (Exception ignored) {}
@@ -508,7 +507,6 @@ public class ServerProcess {
                                     .findFirst();
                             if (javaChild.isPresent()) {
                                 actualJavaPid = javaChild.get().pid();
-                                System.out.println("[ServerProcess] 抓到 Java PID (descendants): " + actualJavaPid);
                                 break;
                             }
                         }

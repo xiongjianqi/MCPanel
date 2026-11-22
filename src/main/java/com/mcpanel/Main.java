@@ -100,19 +100,25 @@ public class Main {
                     }
                     
                     if ("stop".equalsIgnoreCase(cmd.trim())) {
-                        System.out.println("\n[Panel] 本地终端收到 stop，正在关闭所有实例...");
-                        rtMgr.shutdownAll();
-                        System.out.println("[Panel] 所有实例已关闭，面板退出。");
+                        System.out.println("\n[Panel] 本地终端收到 stop，正在向所有实例发送 stop...");
+                        rtMgr.shutdownAllAndFlush();
+                        System.out.println("[Panel] 所有实例已关闭，日志已保存，面板退出。");
                         System.exit(0);
                         return;
                     }
-                    
-                    InstanceRuntime def = rtMgr.getDefault();
-                    if (def != null && def.mcServer.isRunning()) {
-                        def.terminalHandler.log("> " + cmd + "   (来自本地终端)");
-                        def.mcServer.sendCommand(cmd);
-                    } else {
-                        System.out.println("[Panel] 默认实例未运行，忽略命令: " + cmd);
+
+                    // 本地控制台不再区分“默认实例”：指令广播给所有正在运行的实例
+                    int sent = 0;
+                    for (InstanceRuntime rt : rtMgr.all()) {
+                        try {
+                            if (rt == null || rt.mcServer == null || !rt.mcServer.isRunning()) continue;
+                            rt.terminalHandler.log("> " + cmd + "   (来自本地终端)");
+                            rt.mcServer.sendCommand(cmd);
+                            sent++;
+                        } catch (Throwable ignored) {}
+                    }
+                    if (sent == 0) {
+                        System.out.println("[Panel] 当前没有运行中的实例，忽略命令: " + cmd);
                     }
                 } catch (Exception e) { break; }
             }

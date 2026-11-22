@@ -7,7 +7,6 @@ public class InstanceRuntimeManager {
     private static InstanceRuntimeManager instance;
 
     private final Map<String, InstanceRuntime> runtimes = new ConcurrentHashMap<>();
-    private volatile String defaultInstanceId = null;
 
     public static InstanceRuntimeManager getInstance() {
         if (instance == null) {
@@ -34,14 +33,6 @@ public class InstanceRuntimeManager {
             return;
         }
 
-        String savedDefault = com.mcpanel.config.ConfigManager.getInstance().get("panel.default_instance", "");
-        if (!savedDefault.isEmpty() && runtimes.containsKey(savedDefault)) {
-            defaultInstanceId = savedDefault;
-        } else {
-            Instance d = InstanceManager.getInstance().getInstance("default");
-            defaultInstanceId = (d != null) ? d.id : list.get(0).id;
-        }
-
         // ★ 核心修复：异步并发启动实例，不再阻塞主线程
         for (InstanceRuntime rt : runtimes.values()) {
             com.mcpanel.util.Async.run(() -> {
@@ -53,7 +44,7 @@ public class InstanceRuntimeManager {
             });
         }
 
-        System.out.println("[Panel] 共 " + runtimes.size() + " 个实例运行时，默认实例: " + defaultInstanceId);
+        System.out.println("[Panel] 共 " + runtimes.size() + " 个实例运行时");
     }
 
     public InstanceRuntime get(String id) {
@@ -61,21 +52,8 @@ public class InstanceRuntimeManager {
         return runtimes.get(id);
     }
 
-    public InstanceRuntime getDefault() {
-        return defaultInstanceId == null ? null : runtimes.get(defaultInstanceId);
-    }
-
     public Collection<InstanceRuntime> all() {
         return runtimes.values();
-    }
-
-    public String getDefaultId() { return defaultInstanceId; }
-    
-    public synchronized void setDefaultId(String id) {
-        if (runtimes.containsKey(id)) {
-            defaultInstanceId = id;
-            com.mcpanel.config.ConfigManager.getInstance().set("panel.default_instance", id);
-        }
     }
 
     public InstanceRuntime addRuntime(Instance inst) {
@@ -109,6 +87,30 @@ public class InstanceRuntimeManager {
     public void clearAllLogs() {
         for (InstanceRuntime rt : runtimes.values()) {
             try { rt.terminalHandler.clearHistory(); } catch (Exception e) {}
+        }
+    }
+
+    /** 等待每个实例的终端日志队列写盘完成（最长 totalTimeoutMs） */
+    public void flushTerminalLogs(long totalTimeoutMs) {
+        long deadline = System.currentTimeMillis() + Math.max(0L, totalTimeoutMs);
+        for (InstanceRuntime rt : runtimes.values()) {
+            long remain = deadline - System.currentTimeMillis();
+            if (remain <= 0) break;
+            try {
+                rt.terminalHandler.awaitFlushed(remain);
+            } catch (Throwable ignored) {}
+        }
+    }
+
+    /** 关闭所有实例并把日志刷盘：面板退出（本地 stop / 网页关闭面板）统一走这里 */
+    public void shutdownAllAndFlush() {
+        shutdownAll();
+        flushTerminalLogs(5000L);
+        try {
+            // 留一点时间给会话/分享等异步落盘任务
+            Thread.sleep(600L);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
         }
     }
 

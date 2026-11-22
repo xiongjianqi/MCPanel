@@ -92,6 +92,25 @@ public class TerminalHandler {
         }
     }
 
+    /** 等待终端日志写盘队列排空（面板退出前调用），最长 timeoutMs */
+    public void awaitFlushed(long timeoutMs) {
+        long deadline = System.currentTimeMillis() + Math.max(0L, timeoutMs);
+        while (!logWriteQueue.isEmpty() && System.currentTimeMillis() < deadline) {
+            try {
+                Thread.sleep(30L);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+        try {
+            // 队列空了以后写线程还要 flush 一次，留一点余量
+            Thread.sleep(120L);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     private void startLogWriter() {
         logWriterThread = com.mcpanel.util.Async.worker("terminal-log-writer", new Runnable() {
             @Override
@@ -289,10 +308,10 @@ public class TerminalHandler {
         com.mcpanel.util.Async.worker("panel-shutdown", () -> {
             try {
                 addEntry("[Panel] 正在关闭所有实例...");
-                InstanceRuntimeManager.getInstance().shutdownAll();
+                InstanceRuntimeManager.getInstance().shutdownAllAndFlush();
                 addEntry("[Panel] 所有实例已退出");
                 addEntry("[Panel] 面板即将退出，再见");
-                Thread.sleep(1500);
+                awaitFlushed(3000L);
             } catch (Exception e) {}
             System.exit(0);
         });

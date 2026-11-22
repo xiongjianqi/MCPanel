@@ -780,6 +780,148 @@ public class PluginManager {
             return out;
         }
 
+        // ==================== 实例操作（启停 / 文件） ====================
+
+        private com.mcpanel.instance.InstanceRuntime runtimeOf(String instanceId) {
+            if (instanceId == null || instanceId.isEmpty()) return null;
+            return com.mcpanel.instance.InstanceRuntimeManager.getInstance().get(instanceId);
+        }
+
+        /** 实例根目录（instances/<id>），不存在的实例返回 null */
+        private java.io.File instanceRoot(String instanceId) {
+            if (instanceId == null || instanceId.isEmpty()) return null;
+            com.mcpanel.instance.Instance inst =
+                    com.mcpanel.instance.InstanceManager.getInstance().getInstance(instanceId);
+            if (inst == null) return null;
+            try {
+                return inst.getDir().getCanonicalFile();
+            } catch (Throwable e) {
+                return inst.getDir().getAbsoluteFile();
+            }
+        }
+
+        /** 解析实例内相对路径；绝对路径或 ../ 越界一律返回 null */
+        private java.io.File resolveInstanceFile(String instanceId, String path) {
+            java.io.File root = instanceRoot(instanceId);
+            if (root == null) return null;
+            try {
+                String rel = path == null ? "" : path.replace('\\', '/').trim();
+                while (rel.startsWith("/")) rel = rel.substring(1);
+                java.io.File f = new java.io.File(root, rel).getCanonicalFile();
+                String rootPath = root.getPath();
+                if (!f.getPath().equals(rootPath)
+                        && !f.getPath().startsWith(rootPath + java.io.File.separator)) {
+                    return null;
+                }
+                return f;
+            } catch (Throwable e) {
+                return null;
+            }
+        }
+
+        @Override public boolean isInstanceRunning(String instanceId) {
+            com.mcpanel.instance.InstanceRuntime rt = runtimeOf(instanceId);
+            return rt != null && rt.mcServer != null && rt.mcServer.isRunning();
+        }
+
+        @Override public boolean startInstance(String instanceId) {
+            com.mcpanel.instance.InstanceRuntime rt = runtimeOf(instanceId);
+            if (rt == null) return false;
+            if (rt.mcServer.isRunning() || rt.mcServer.isStarting()) return true;
+            com.mcpanel.util.Async.run(() -> {
+                // 用 mcServer.start() 而不是 rt.start()：后者有"只初始化一次"的保护，
+                // 面板启动时已经调用过，插件再次调用不会真正拉起服务端。
+                try { rt.mcServer.start(); } catch (Throwable ignored) {}
+            });
+            return true;
+        }
+
+        @Override public boolean stopInstance(String instanceId) {
+            com.mcpanel.instance.InstanceRuntime rt = runtimeOf(instanceId);
+            if (rt == null) return false;
+            com.mcpanel.util.Async.run(() -> {
+                try { rt.mcServer.shutdown(); } catch (Throwable ignored) {}
+            });
+            return true;
+        }
+
+        @Override public boolean restartInstance(String instanceId) {
+            com.mcpanel.instance.InstanceRuntime rt = runtimeOf(instanceId);
+            if (rt == null) return false;
+            com.mcpanel.util.Async.run(() -> {
+                try { rt.mcServer.restart(); } catch (Throwable ignored) {}
+            });
+            return true;
+        }
+
+        @Override public List<String> listInstanceFiles(String instanceId, String path) {
+            List<String> out = new ArrayList<>();
+            java.io.File dir = resolveInstanceFile(instanceId, path);
+            if (dir == null || !dir.isDirectory()) return out;
+            java.io.File[] files = dir.listFiles();
+            if (files == null) return out;
+            java.util.Arrays.sort(files, (a, b) -> {
+                if (a.isDirectory() != b.isDirectory()) return a.isDirectory() ? -1 : 1;
+                return a.getName().compareToIgnoreCase(b.getName());
+            });
+            for (java.io.File f : files) {
+                out.add(f.getName() + (f.isDirectory() ? "/" : ""));
+            }
+            return out;
+        }
+
+        @Override public String readInstanceFile(String instanceId, String path, int maxBytes) {
+            java.io.File f = resolveInstanceFile(instanceId, path);
+            if (f == null || !f.isFile()) return null;
+            int limit = maxBytes <= 0 ? 1024 * 1024 : Math.min(maxBytes, 16 * 1024 * 1024);
+            try {
+                if (f.length() > limit) return null;
+                byte[] data = java.nio.file.Files.readAllBytes(f.toPath());
+                return new String(data, java.nio.charset.StandardCharsets.UTF_8);
+            } catch (Throwable e) {
+                return null;
+            }
+        }
+
+        @Override public boolean writeInstanceFile(String instanceId, String path, String content) {
+            java.io.File f = resolveInstanceFile(instanceId, path);
+            if (f == null || content == null) return false;
+            try {
+                java.io.File parent = f.getParentFile();
+                if (parent != null && !parent.exists() && !parent.mkdirs()) return false;
+                java.nio.file.Files.write(f.toPath(),
+                        content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                return true;
+            } catch (Throwable e) {
+                return false;
+            }
+        }
+
+        @Override public boolean deleteInstanceFile(String instanceId, String path) {
+            java.io.File root = instanceRoot(instanceId);
+            java.io.File f = resolveInstanceFile(instanceId, path);
+            if (root == null || f == null) return false;
+            // 不允许把实例根目录整个删掉
+            if (f.getPath().equals(root.getPath())) return false;
+            return deleteRecursively(f);
+        }
+
+        private boolean deleteRecursively(java.io.File f) {
+            if (f == null || !f.exists()) return false;
+            if (f.isDirectory()) {
+                java.io.File[] children = f.listFiles();
+                if (children != null) {
+                    for (java.io.File c : children) deleteRecursively(c);
+                }
+            }
+            return f.delete();
+        }
+
+        @Override public boolean makeInstanceDir(String instanceId, String path) {
+            java.io.File f = resolveInstanceFile(instanceId, path);
+            return f != null && (f.isDirectory() || f.mkdirs());
+        }
+
         private boolean isWhitelistEnabled(com.mcpanel.instance.InstanceRuntime rt) {
             try {
                 File sp = rt.config.resolve(

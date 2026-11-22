@@ -301,25 +301,6 @@ public class InstanceHandler {
             return;
         }
 
-        if (path.equals("/api/instances/set-default")) {
-            String id = p.get("id");
-            if (!hasPerm(user, "instance_edit")) {
-                ex.setStatusCode(403);
-                ex.getResponseSender().send("{\"error\":\"权限不足，需要 instance_edit 权限\"}");
-                return;
-            }
-            if (!UserStore.getInstance().canAccessInstance(user, id)) {
-                ex.setStatusCode(403);
-                ex.getResponseSender().send("{\"error\":\"无权访问该实例\"}");
-                return;
-            }
-            runtimeManager.setDefaultId(id);
-            result.put("ok", true);
-            ex.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json; charset=utf-8");
-            ex.getResponseSender().send(ByteBuffer.wrap(MAPPER.writeValueAsBytes(result)));
-            return;
-        }
-
         if (path.equals("/api/instances/delete")) {
             if (!hasPerm(user, "instance_delete")) {
                 ex.setStatusCode(403);
@@ -454,7 +435,6 @@ public class InstanceHandler {
         m.put("needsEula", needsEula);
         boolean isOldVideo = inst.bg != null && isVideoFile(inst.bg);
         m.put("hasBg", inst.bg != null && !inst.bg.isEmpty() && !isOldVideo);
-        m.put("isDefault", inst.id.equals(runtimeManager.getDefaultId()));
         return m;
     }
 
