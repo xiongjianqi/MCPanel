@@ -134,6 +134,12 @@ public class SshManager {
             newConfig.add("Subsystem sftp internal-sftp");
             newConfig.add("ClientAliveInterval 30");
             newConfig.add("ClientAliveCountMax 3");
+            // 并发/握手限制：公网上的 SSH 扫描非常多，没有这几项时每个连接都会 fork 一个
+            // sshd，连接堆积或握手卡住时进程数（ps -eLf 里的 sshd 行）会持续上涨。
+            newConfig.add("LoginGraceTime 20");
+            newConfig.add("MaxStartups 10:30:20");
+            newConfig.add("MaxSessions 5");
+            newConfig.add("MaxAuthTries 3");
 
             // ★ 恢复实例用户的普通 SSH 登录权限，不再限制 Chroot 或 SFTP
             // 安全防护完全依赖 LinuxUserManager 对 /workspace 的 711 权限限制
@@ -148,13 +154,19 @@ public class SshManager {
                 }
             }
 
-            runQuiet(10, "pkill", "-9", "-x", "sshd");
+            // ★ 不再无条件 pkill sshd：
+            //   1) 那会直接杀掉用户正在用的 SSH 会话（表现为 Connection closed by remote host）；
+            //   2) 守护进程被 -9 杀掉后，正在连接的 sshd 子进程会被挂到 PID 1（面板 JVM）下，
+            //      Java 不会 wait 非自己创建的进程，它们退出后变成 ps -eLf 里越积越多的 sshd 僵尸。
+            boolean alreadyRunning = runQuietCode(10, "pgrep", "-x", "sshd") == 0;
+            if (alreadyRunning) {
+                logger.accept("[SshManager] SSH 服务已在运行，跳过重启（新配置下次启动生效）");
+            } else {
+                runQuiet(30, "/usr/sbin/sshd");
+                Thread.sleep(600);
+            }
 
-            runQuiet(30, "/usr/sbin/sshd");
-
-            Thread.sleep(1000);
             boolean running = runQuietCode(10, "pgrep", "-x", "sshd") == 0;
-
             if (running) {
                 logger.accept("[SshManager] ✓ SSH 服务已在端口 " + port + " 成功运行");
             } else {
