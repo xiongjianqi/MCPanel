@@ -31,10 +31,20 @@ public class ServerProcess {
     private volatile boolean running = false;
     private volatile boolean starting = false;
     private volatile boolean installing = false;
+    /** 已发起关闭（面板按钮 / 面板终端输入 stop / 控制台广播 / 游戏内 stop） */
+    private volatile boolean stopping = false;
     private volatile Process installerProcess = null;
-    private long startTime;
+    private volatile long startTime;
     private volatile long actualJavaPid = -1;
     public volatile boolean needsEula = false;
+
+    /** 连续异常退出次数，达到上限后不再自动重启 */
+    private volatile int consecutiveCrashes = 0;
+    /** 下一次 doStart 是自动重启触发的（不算用户主动启动，不重置崩溃计数） */
+    private volatile boolean autoRestartNext = false;
+    private static final int MAX_CONSECUTIVE_CRASHES = 3;
+    /** 运行超过这个时长后再退出，视为"稳定过"，崩溃计数归零 */
+    private static final long STABLE_UPTIME_MS = 5 * 60 * 1000L;
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final long STARTUP_TIMEOUT_MS = 180_000;
@@ -69,6 +79,7 @@ public class ServerProcess {
     public String getStateString() {
         if (installing) return "installing";
         if (needsEula) return "eula";
+        if (stopping) return "stopping";
         if (starting) return "starting";
         if (running) return "running";
         return "stopped";
@@ -76,7 +87,46 @@ public class ServerProcess {
 
     public boolean isRunning()     { return running; }
     public boolean isStarting()    { return starting; }
+    public boolean isStopping()    { return stopping; }
     public boolean isInstalling()  { return installing; }
+
+    /** 标记"正在关闭"：面板发出关闭命令、或从日志里看到服务端开始关闭时调用 */
+    private void markStopping() {
+        if (stopping || (!running && !starting)) return;
+        stopping = true;
+        notifyStateChange();
+        final long myStart = startTime;
+        // 兜底：关闭命令没生效（比如被插件拦截）时，3 分钟后恢复成运行中，避免一直卡在"关闭中"
+        com.mcpanel.util.Async.later(180_000L, () -> {
+            if (stopping && running && startTime == myStart) {
+                stopping = false;
+                notifyStateChange();
+            }
+        });
+    }
+
+    /** 判断一条命令是不是面板配置的关闭命令（默认 stop / shutdown） */
+    private boolean isShutdownCommand(String cmd) {
+        if (cmd == null) return false;
+        String c = cmd.trim();
+        if (c.isEmpty()) return false;
+        String configured = config.get("terminal.shutdown.command", isVelocity ? "shutdown" : "stop");
+        if (configured != null) {
+            String cfg = configured.trim();
+            if (!cfg.isEmpty() && c.equalsIgnoreCase(cfg)) return true;
+        }
+        return "stop".equalsIgnoreCase(c) || "shutdown".equalsIgnoreCase(c);
+    }
+
+    /** 服务端输出里出现这些内容，说明是正常关闭流程（包括游戏内 /stop） */
+    private void noteShutdownOutput(String line) {
+        if (line == null) return;
+        if (line.contains("Stopping the server") || line.contains("Stopping server")
+                || line.contains("Shutting down the server") || line.contains("Shutting down server")
+                || line.contains("Shutting down the proxy")) {
+            markStopping();
+        }
+    }
     public boolean isEulaFileAgreed() { return checkEulaFile(); }
 
     public void notifyStateChange() {
@@ -219,6 +269,12 @@ public class ServerProcess {
 
     private void doStart() {
         if (running || starting || installing) return;
+
+        // 用户/面板主动启动时清零崩溃计数；自动重启触发的启动要保留计数
+        if (!autoRestartNext) consecutiveCrashes = 0;
+        autoRestartNext = false;
+        stopping = false;
+
         // 线程配额已满时直接拒绝启动：否则日志读取线程拿不到配额，子进程写满 stdout 管道后
         // 会卡住，表现为"点了启动但服务端不动"，比明确报错更难排查。
         if (com.mcpanel.util.Async.workerCount() >= com.mcpanel.util.Async.maxWorkers()) {
@@ -284,6 +340,7 @@ public class ServerProcess {
                         for (OutputListener l : listeners) {
                             try { l.onOutput(cleanLine); } catch (Exception ignored) {}
                         }
+                        noteShutdownOutput(cleanLine);
                         if (starting && isReadyLine(cleanLine)) setState(true, false);
 
                         Matcher m = CHAT_PATTERN.matcher(cleanLine);
@@ -299,8 +356,7 @@ public class ServerProcess {
                         }
                     }
                 } catch (IOException ignored) {}
-                setState(false, false);
-                broadcast("[Panel] 容器日志流已断开，容器已退出");
+                onProcessExit(myStart);
             });
 
         } catch (Exception e) {
@@ -544,6 +600,7 @@ public class ServerProcess {
                         for (OutputListener l : listeners) {
                             try { l.onOutput(cleanLine); } catch (Exception ignored) {}
                         }
+                        noteShutdownOutput(cleanLine);
                         if (starting && isReadyLine(cleanLine)) setState(true, false);
 
                         Matcher chatMatcher = CHAT_PATTERN.matcher(cleanLine);
@@ -570,13 +627,13 @@ public class ServerProcess {
 
                 if (eulaPending) {
                     needsEula = true;
+                    stopping = false;
                     setState(false, false);
                     broadcast("需要同意 Minecraft EULA！");
                     broadcast("请阅读 https://aka.ms/MinecraftEULA 后在终端输入 Y 同意，N 不同意（Y/N）");
                     return;
                 }
-                setState(false, false);
-                broadcast("[Panel] 实例进程已退出");
+                onProcessExit(myStart);
             });
 
         } catch (IOException e) {
@@ -595,6 +652,7 @@ public class ServerProcess {
 
     private void failStart(String reason) {
         broadcast("[Panel] ✗ " + reason);
+        stopping = false;
         setState(false, false);
         System.err.println("[ServerProcess] " + reason);
     }
@@ -678,6 +736,7 @@ public class ServerProcess {
         if (installing || !running) return;
         if (cmd == null) return;
         String safeCmd = cmd.replace("\n", "").replace("\r", "");
+        if (isShutdownCommand(safeCmd)) markStopping();
 
         if (isContainerMode()) {
             // ★ 修复：docker exec 以前直接在调用线程里跑（可能是 WebSocket IO 线程），
@@ -703,6 +762,7 @@ public class ServerProcess {
 
     public void shutdown() {
         if (!running && !starting) return;
+        markStopping();
 
         if (isContainerMode()) {
             try {
@@ -716,6 +776,7 @@ public class ServerProcess {
         }
 
         if (process == null) {
+            stopping = false;
             setState(false, false);
             return;
         }
@@ -739,6 +800,7 @@ public class ServerProcess {
     }
 
     public void kill() {
+        markStopping();
         if (installerProcess != null && installing) {
             destroyTree(installerProcess);
             installerProcess = null;
@@ -880,11 +942,43 @@ public class ServerProcess {
     }
 
     public void restart() {
+        // 取消重启延迟：关闭完成后立即拉起
         shutdown();
-        try {
-            Thread.sleep(config.getInt("terminal.restart.delay", 5000));
-        } catch (InterruptedException ignored) {}
         start();
+    }
+
+    /**
+     * 进程结束后的统一处理。
+     * 正常关闭（面板按钮 / 面板终端输入 stop / 控制台 / 游戏内 stop）不自动重启；
+     * 其他退出视为崩溃，按 terminal.auto.restart 自动重启，连续 3 次后停止。
+     */
+    private void onProcessExit(long myStart) {
+        // 已经有新的启动（例如重启流程已经开始），这次退出属于上一轮，不能覆盖新状态
+        if (startTime != myStart) return;
+        boolean expected = stopping;
+        stopping = false;
+        long uptime = startTime > 0 ? System.currentTimeMillis() - startTime : 0L;
+        if (expected || uptime >= STABLE_UPTIME_MS) consecutiveCrashes = 0;
+
+        setState(false, false);
+
+        if (expected) {
+            broadcast("[Panel] 实例进程已退出");
+            return;
+        }
+
+        consecutiveCrashes++;
+        if (!config.getBool("terminal.auto.restart", true)) {
+            broadcast("[Panel] 实例异常退出（自动重启已关闭）");
+            return;
+        }
+        if (consecutiveCrashes >= MAX_CONSECUTIVE_CRASHES) {
+            broadcast("[Panel] 实例已连续崩溃 " + consecutiveCrashes + " 次，停止自动重启，请检查日志");
+            return;
+        }
+        broadcast("[Panel] 实例异常退出（连续第 " + consecutiveCrashes + " 次），正在自动重启...");
+        autoRestartNext = true;
+        com.mcpanel.util.Async.run(this::start);
     }
 
     public long getUptime() {

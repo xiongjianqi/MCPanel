@@ -141,8 +141,7 @@ public class InstanceManager {
             props.setProperty("velocity.server.dir", "server");
             props.setProperty("velocity.auto.start", "true");
             props.setProperty("terminal.shutdown.command", "shutdown");
-            props.setProperty("terminal.restart.delay", "5000");
-            props.setProperty("terminal.auto.restart", "false");
+            props.setProperty("terminal.auto.restart", "true");
             int port = pickFreePort(usedPorts, VELOCITY_PORT_START);
             props.setProperty("velocity.port", String.valueOf(port));
         } else {
@@ -156,8 +155,7 @@ public class InstanceManager {
                 props.setProperty("mc.server.dir", "server");
                 props.setProperty("mc.auto.start", "true");
                 props.setProperty("terminal.shutdown.command", "stop");
-                props.setProperty("terminal.restart.delay", "5000");
-                props.setProperty("terminal.auto.restart", "false");
+                props.setProperty("terminal.auto.restart", "true");
             }
             props.remove("mc.port.forward.from");
             props.remove("mc.port.forward.to");

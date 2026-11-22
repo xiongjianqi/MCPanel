@@ -143,7 +143,6 @@ var CFG_LABEL = {
   'velocity.port':              'Velocity 监听端口',
 
   'terminal.shutdown.command':  '关闭命令（MC: stop / Velocity: shutdown）',
-  'terminal.restart.delay':     '重启延迟（毫秒）',
   'terminal.auto.restart':      '异常退出时自动重启 (true/false)',
 
   'web.port':                   '面板 Web 端口',

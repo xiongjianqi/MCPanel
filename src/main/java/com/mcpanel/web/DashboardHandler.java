@@ -287,6 +287,7 @@ public class DashboardHandler {
             running = mcServer.isRunning();
             data.put("running", running);
             data.put("starting", mcServer.isStarting());
+            data.put("stopping", mcServer.isStopping());
             data.put("installing", mcServer.isInstalling());
             data.put("needsEula", mcServer.needsEula);
             data.put("state", mcServer.getStateString());

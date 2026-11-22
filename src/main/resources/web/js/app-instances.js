@@ -270,9 +270,11 @@ function instanceListRefresh(force) {
         var stEl = card.querySelector('.instance-card-status');
         if (stEl) {
             var state = 'stopped';
-            if (inst.running) state = inst.starting ? 'starting' : 'running';
+            if (inst.stopping) state = 'stopping';
+            else if (inst.running) state = inst.starting ? 'starting' : 'running';
             stEl.className = 'instance-card-status ' + state;
-            if (state === 'starting') stEl.textContent = '启动中';
+            if (state === 'stopping') stEl.textContent = '● 关闭中';
+            else if (state === 'starting') stEl.textContent = '启动中';
             else if (state === 'running') stEl.textContent = '● 运行中';
             else stEl.textContent = '○ 已停止';
         }

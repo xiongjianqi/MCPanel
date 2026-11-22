@@ -429,9 +429,11 @@ public class InstanceHandler {
         InstanceRuntime rt = runtimeManager.get(inst.id);
         boolean running = rt != null && rt.mcServer.isRunning();
         boolean starting = rt != null && rt.mcServer.isStarting();
+        boolean stopping = rt != null && rt.mcServer.isStopping();
         boolean needsEula = rt != null && rt.mcServer.needsEula;
         m.put("running", running);
         m.put("starting", starting);
+        m.put("stopping", stopping);
         m.put("needsEula", needsEula);
         boolean isOldVideo = inst.bg != null && isVideoFile(inst.bg);
         m.put("hasBg", inst.bg != null && !inst.bg.isEmpty() && !isOldVideo);

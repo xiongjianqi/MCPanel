@@ -776,6 +776,7 @@ function loadDashboard() {
     if (el) {
       if (d.installing) { el.textContent = '安装中...'; el.style.color = '#7aa2f7'; }
       else if (d.needsEula) { el.textContent = '需要同意 EULA'; el.style.color = '#f0c040'; }
+      else if (d.stopping || d.state === 'stopping') { el.textContent = '关闭中...'; el.style.color = '#f0c040'; }
       else if (d.starting) { el.textContent = '启动中...'; el.style.color = '#f0c040'; }
       else if (dashRunning) { el.textContent = '运行中'; el.style.color = '#3ddc84'; }
       else { el.textContent = '已停止'; el.style.color = '#ff5c5c'; }
@@ -818,7 +819,8 @@ function loadDashboard() {
     if (no) no.textContent = isStopped ? '-' : fmtSize(d.netOut || 0) + '/s';
 
     if (typeof updatePowerButton === 'function') {
-      updatePowerButton(dashRunning, !!d.starting, !!d.needsEula, !!d.installing);
+      updatePowerButton(dashRunning, !!d.starting, !!d.needsEula, !!d.installing,
+                        !!d.stopping || d.state === 'stopping');
     }
     
     if (chartRange === 'live') {

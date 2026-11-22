@@ -47,6 +47,7 @@ public class InstanceRuntime {
             ensureMcDefaults();
             migratePortConfig();
         }
+        migrateRestartPolicy();
 
         // ★ 核心修复：构造函数只创建对象，不做任何可能阻塞的操作（initInstanceUser/ssh-keygen 等）
         this.perms = PlayerPerms.forRoot(inst.getDir());
@@ -71,6 +72,19 @@ public class InstanceRuntime {
         ensure("velocity.auto.start", "true");
         ensure("velocity.port", "25577");
         ensure("terminal.shutdown.command", "shutdown");
+    }
+
+    /**
+     * 一次性迁移：旧版本创建实例时写死 terminal.auto.restart=false，
+     * 新版本默认开启"异常退出自动重启"。迁移只做一次，之后用户手动改的值不会被覆盖。
+     */
+    private void migrateRestartPolicy() {
+        if (config.has("_auto.restart.migrated")) return;
+        String v = config.get("terminal.auto.restart", "");
+        if (v == null || v.isEmpty() || "false".equalsIgnoreCase(v)) {
+            config.set("terminal.auto.restart", "true");
+        }
+        config.set("_auto.restart.migrated", "1");
     }
 
     private void ensure(String key, String def) {

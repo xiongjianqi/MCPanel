@@ -1,19 +1,20 @@
 // ===================== 终端 =====================
 var ws = null, termReady = false;
-var mcRunning = false, mcStarting = false, mcNeedsEula = false, mcInstalling = false;
+var mcRunning = false, mcStarting = false, mcNeedsEula = false, mcInstalling = false, mcStopping = false;
 var lastSeq = 0;
 
-function updatePowerButton(running, starting, needsEula, installing) {
+function updatePowerButton(running, starting, needsEula, installing, stopping) {
   mcRunning = running;
   mcStarting = !!starting;
   mcNeedsEula = !!needsEula;
   mcInstalling = !!installing;
+  mcStopping = !!stopping;
 
   var btn = document.getElementById('term-power-btn');
   var restartBtn = document.getElementById('term-restart-btn');
   var killBtn = document.getElementById('term-kill-btn');
 
-  if (restartBtn) restartBtn.disabled = !running && !starting;
+  if (restartBtn) restartBtn.disabled = (!running && !starting) || mcStopping;
   if (killBtn) killBtn.disabled = !running && !starting;
 
   if (!btn) return;
@@ -26,6 +27,10 @@ function updatePowerButton(running, starting, needsEula, installing) {
     btn.textContent = '同意 EULA 并启动';
     btn.className = 'btn primary';
     btn.disabled = false;
+  } else if (mcStopping) {
+    btn.textContent = '关闭中...';
+    btn.className = 'btn';
+    btn.disabled = true;
   } else if (mcStarting) {
     btn.textContent = '启动中...';
     btn.className = 'btn';
@@ -124,6 +129,9 @@ function initTerminal() {
       } else if (stt === 'eula') {
         if (stEl) { stEl.textContent = '需要同意 EULA'; stEl.style.color = '#f0c040'; }
         updatePowerButton(false, false, true, false);
+      } else if (stt === 'stopping') {
+        if (stEl) { stEl.textContent = '关闭中...'; stEl.style.color = '#f0c040'; }
+        updatePowerButton(true, false, false, false, true);
       } else if (stt === 'starting') {
         if (stEl) { stEl.textContent = '启动中...'; stEl.style.color = '#f0c040'; }
         updatePowerButton(true, true, false, false);
@@ -199,6 +207,7 @@ function termAgreeEulaAndStart() {
 function termToggle() {
   try {
     if (mcInstalling) { toast('正在安装服务端，请稍候', 'err'); return; }
+    if (mcStopping) { toast('正在关闭中，请稍候', 'err'); return; }
     if (mcNeedsEula) { termAgreeEulaAndStart(); return; }
     if (mcStarting) { toast('正在启动中，请稍候', 'err'); return; }
     if (mcRunning) {
@@ -213,6 +222,9 @@ function termToggle() {
 function termAction(action) {
   try {
     if (mcInstalling) { toast('正在安装服务端，请稍候', 'err'); return; }
+    if (mcStopping && (action === 'start' || action === 'restart')) {
+      toast('正在关闭中，请稍候', 'err'); return;
+    }
     if ((action === 'restart' || action === 'kill') && !mcRunning && !mcStarting) {
       toast('服务器未运行，无法执行此操作', 'err'); return;
     }
@@ -238,6 +250,11 @@ function termAction(action) {
         toast('正在安装服务端，请稍候', 'err');
       } else if (r && r.error) {
         toast(r.error, 'err');
+      } else if (r && r.ok && action === 'stop') {
+        // 后端已受理关闭请求，先切到"关闭中"，不用等下一次状态推送
+        var stEl = document.getElementById('term-status');
+        if (stEl) { stEl.textContent = '关闭中...'; stEl.style.color = '#f0c040'; }
+        updatePowerButton(true, false, false, false, true);
       }
     });
   } catch(e) { console.error(e); }
@@ -266,8 +283,6 @@ function termLoadSettings() {
 
     var stopEl = document.getElementById('ts-stop');
     if (stopEl) stopEl.value = d.shutdownCommand || d.stop_cmd || '';
-    var delayEl = document.getElementById('ts-delay');
-    if (delayEl) delayEl.value = d.restartDelay || d.restart_delay || '5000';
     var autoEl = document.getElementById('ts-auto');
     if (autoEl) autoEl.checked = (d.autoRestart === 'true' || d.autoRestart === true);
     var autostartEl = document.getElementById('ts-autostart');
@@ -281,7 +296,6 @@ function termSaveSettings() {
   var payload = {
     startCommand: document.getElementById('ts-start') ? document.getElementById('ts-start').value : '',
     shutdownCommand: document.getElementById('ts-stop') ? document.getElementById('ts-stop').value : '',
-    restartDelay: document.getElementById('ts-delay') ? document.getElementById('ts-delay').value : '5000',
     autoRestart: document.getElementById('ts-auto') && document.getElementById('ts-auto').checked ? 'true' : 'false',
     autoStart: document.getElementById('ts-autostart') && document.getElementById('ts-autostart').checked ? 'true' : 'false',
     port: document.getElementById('ts-port') ? document.getElementById('ts-port').value : '25565'

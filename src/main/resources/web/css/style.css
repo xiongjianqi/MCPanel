@@ -651,6 +651,7 @@ input[type="checkbox"].row-check:checked::after {
   border:1px solid rgba(255,255,255,.06);
 }
 .instance-card-status.running{color:var(--ok)}
+.instance-card-status.stopping{color:var(--warn)}
 
 .instance-card-body{
   padding:14px;flex:1;

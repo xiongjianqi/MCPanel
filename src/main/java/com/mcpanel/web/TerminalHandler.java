@@ -361,6 +361,7 @@ public class TerminalHandler {
         Map<String, Object> m = new HashMap<>();
         m.put("running", mc.isRunning());
         m.put("starting", mc.isStarting());
+        m.put("stopping", mc.isStopping());
         m.put("installing", mc.isInstalling());
         m.put("needsEula", mc.needsEula);
         m.put("state", mc.getStateString());
@@ -377,8 +378,7 @@ public class TerminalHandler {
         Map<String, String> m = new HashMap<>();
         m.put("type", type);
         m.put("shutdownCommand", config.get("terminal.shutdown.command", isVel ? "shutdown" : "stop"));
-        m.put("restartDelay", config.get("terminal.restart.delay", "5000"));
-        m.put("autoRestart", config.get("terminal.auto.restart", "false"));
+        m.put("autoRestart", config.get("terminal.auto.restart", "true"));
         m.put("startCommand", isVel
                 ? config.get("velocity.start.command", "java -Xms512M -Xmx512M -jar velocity.jar")
                 : config.get("mc.start.command", "java -Xmx2G -jar server.jar nogui"));
@@ -543,7 +543,6 @@ public class TerminalHandler {
         String type = config.get("_instance.type", "mc");
         boolean isVel = "velocity".equals(type);
         if (p.containsKey("shutdownCommand")) config.set("terminal.shutdown.command", p.get("shutdownCommand"));
-        if (p.containsKey("restartDelay")) config.set("terminal.restart.delay", p.get("restartDelay"));
         if (p.containsKey("autoRestart")) config.set("terminal.auto.restart", p.get("autoRestart"));
         if (p.containsKey("startCommand")) {
             if (isVel) config.set("velocity.start.command", p.get("startCommand"));
