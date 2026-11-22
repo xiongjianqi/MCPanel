@@ -160,7 +160,10 @@ public class SshManager {
             //      Java 不会 wait 非自己创建的进程，它们退出后变成 ps -eLf 里越积越多的 sshd 僵尸。
             boolean alreadyRunning = runQuietCode(10, "pgrep", "-x", "sshd") == 0;
             if (alreadyRunning) {
-                logger.accept("[SshManager] SSH 服务已在运行，跳过重启（新配置下次启动生效）");
+                // 不杀进程，只给最老的那一条（监听中的守护进程）发 SIGHUP 热加载配置：
+                // 和 systemctl reload ssh 是同一机制，已建立的 SSH 会话不会被断开。
+                runQuiet(10, "pkill", "-HUP", "-o", "-x", "sshd");
+                logger.accept("[SshManager] SSH 服务已在运行，已热加载新配置（会话不中断）");
             } else {
                 runQuiet(30, "/usr/sbin/sshd");
                 Thread.sleep(600);
