@@ -4,12 +4,28 @@ var selectedPaths = new Set();
 var clipboard = null;
 
 function filesInitPath() {
-  if (currentInstanceId) {
+  if (typeof initialFilesPath !== 'undefined' && initialFilesPath) {
+    // 来自 /files/a/b 或 /<实例ID>/files/a/b：刷新/直达时恢复到指定目录
+    currentPath = initialFilesPath;
+    initialFilesPath = '';
+  } else if (currentInstanceId) {
     currentPath = '/server';
   } else {
     currentPath = '/';
   }
   selectedPaths = new Set();
+}
+
+// 把当前目录写回地址栏，刷新页面不会丢位置
+function filesSyncUrl() {
+  try {
+    var base = currentInstanceId ? ('/' + currentInstanceId + '/files') : '/files';
+    var segs = (currentPath || '/').split('/').filter(function (x) { return x !== ''; });
+    var url = base + (segs.length ? '/' + segs.map(encodeURIComponent).join('/') : '');
+    if (window.location.pathname !== url) {
+      window.history.replaceState(null, '', url);
+    }
+  } catch (e) {}
 }
 
 function shouldHideEntry(name, isDir) {
@@ -214,8 +230,8 @@ function filesCloseBatchMenu() {
 document.addEventListener('click', filesCloseBatchMenu);
 
 function filesRefresh() {
-  if (panelExited) return;
-  postApi('/api/files/list', { path: currentPath }).then(function (res) {
+  if (panelExited) return Promise.resolve(null);
+  return postApi('/api/files/list', { path: currentPath }).then(function (res) {
     if (panelExited) return;
     var tbody = document.getElementById('files-list');
     if (!tbody) return;
@@ -223,7 +239,7 @@ function filesRefresh() {
     if (res && res.error) {
       tbody.innerHTML = '<tr><td colspan="5" class="empty" style="color:#ff5c5c;">加载失败：' + res.error + '</td></tr>';
       updateFilesToolbar();
-      return;
+      return res;
     }
     
     tbody.innerHTML = '';
@@ -233,6 +249,7 @@ function filesRefresh() {
       var mode = hasPerm('files_all') && !currentInstanceId ? '完全' : '实例';
       pathEl.textContent = '[' + mode + '] ' + (currentPath || '/');
     }
+    filesSyncUrl();
     if (!res || !res.files || res.files.length === 0) {
       tbody.innerHTML = '<tr><td colspan="5" class="empty">空目录</td></tr>';
       updateFilesToolbar(); return;
@@ -319,6 +336,7 @@ function filesRefresh() {
       tbody.appendChild(tr);
     });
     updateFilesToolbar();
+    return res;
   }).catch(function(e) {
     console.error(e);
     var tb = document.getElementById('files-list');
@@ -590,63 +608,99 @@ function filesUploadClick() {
 
 (function() {
   var inp = document.getElementById('files-upload-input');
-  if (inp) {
-    inp.addEventListener('change', function (e) {
-      var file = e.target.files[0]; if (!file) return;
-      var targetPath = pathJoin(currentPath, file.name);
+  if (!inp) return;
 
-      var progressEl = document.getElementById('upload-progress');
-      var nameEl = document.getElementById('up-name');
-      var barEl = document.getElementById('up-bar-fill');
-      var pctEl = document.getElementById('up-pct');
+  // 4MB 一片：单次请求体很小，不会被反向代理的 body/超时限制整包拦掉，
+  // 这也是"提示上传成功但文件没进目录"最常见的根因。
+  var CHUNK_SIZE = 4 * 1024 * 1024;
 
-      if (progressEl) {
-        progressEl.classList.add('show');
-        nameEl.textContent = file.name + ' (' + fmtSize(file.size) + ')';
-        barEl.style.width = '0%';
-        pctEl.textContent = '0%';
+  inp.addEventListener('change', function (e) {
+    var file = e.target.files[0]; if (!file) return;
+    var targetPath = pathJoin(currentPath, file.name);
+
+    var progressEl = document.getElementById('upload-progress');
+    var nameEl = document.getElementById('up-name');
+    var barEl = document.getElementById('up-bar-fill');
+    var pctEl = document.getElementById('up-pct');
+
+    if (progressEl) {
+      progressEl.classList.add('show');
+      if (nameEl) nameEl.textContent = file.name + ' (' + fmtSize(file.size) + ')';
+      if (barEl) barEl.style.width = '0%';
+      if (pctEl) pctEl.textContent = '0%';
+    }
+    var uploadStartTime = Date.now();
+
+    function setProgress(loaded) {
+      var total = Math.max(1, file.size);
+      var pct = Math.max(0, Math.min(99, Math.round(loaded / total * 100)));
+      if (barEl) barEl.style.width = pct + '%';
+      if (pctEl) {
+        var elapsed = (Date.now() - uploadStartTime) / 1000;
+        var speed = elapsed > 0 ? loaded / elapsed : 0;
+        pctEl.textContent = pct + '% · ' + fmtSize(loaded) + ' / ' + fmtSize(file.size)
+          + (speed > 0 ? ' · ' + fmtSize(speed) + '/s' : '');
       }
-      var uploadStartTime = Date.now();
+    }
 
-      var xhr = new XMLHttpRequest();
-      xhr.open('POST', '/api/files/upload?path=' + encodeURIComponent(targetPath), true);
-
-      xhr.upload.addEventListener('progress', function (ev) {
-        if (!ev.lengthComputable) return;
-        var pct = Math.round(ev.loaded / ev.total * 100);
-        if (barEl) barEl.style.width = pct + '%';
-        if (pctEl) {
-          var elapsed = (Date.now() - uploadStartTime) / 1000;
-          var speed = elapsed > 0 ? ev.loaded / elapsed : 0;
-          pctEl.textContent = pct + '% · '
-            + fmtSize(ev.loaded) + ' / ' + fmtSize(ev.total)
-            + (speed > 0 ? ' · ' + fmtSize(speed) + '/s' : '');
+    function finish(ok, err, resp) {
+      if (barEl) barEl.style.width = '100%';
+      if (pctEl) pctEl.textContent = '100%';
+      setTimeout(function () { if (progressEl) progressEl.classList.remove('show'); }, 500);
+      if (!ok) { toast(err, 'err'); return; }
+      var expectName = (resp && resp.name) || file.name;
+      toast('上传完成', 'ok');
+      filesRefresh().then(function (res) {
+        var found = false;
+        if (res && res.files) {
+          found = res.files.some(function (f) { return f.name === expectName; });
+        }
+        if (!found) {
+          toast('服务端已写入，但当前目录里没有 ' + expectName
+                + '（实际路径：' + ((resp && resp.abs) || '未知') + '）', 'err');
         }
       });
+    }
 
+    function sendChunk(offset) {
+      var blob = file.slice(offset, Math.min(offset + CHUNK_SIZE, file.size));
+      var xhr = new XMLHttpRequest();
+      var chunkUrl = '/api/files/upload/chunk?path=' + encodeURIComponent(targetPath)
+                   + '&offset=' + offset + '&total=' + file.size;
+      xhr.open('POST', apiUrlWithInstance(chunkUrl), true);
+      xhr.timeout = 120000;
+      xhr.upload.addEventListener('progress', function (ev) {
+        if (!ev.lengthComputable) return;
+        setProgress(offset + ev.loaded);
+      });
       xhr.addEventListener('load', function () {
-        var ok = false, err = null;
-        try {
-          var r = JSON.parse(xhr.responseText || '{}');
-          ok = !!r.ok;
-          err = r.error || null;
-        } catch (e2) { ok = (xhr.status >= 200 && xhr.status < 300); }
-        if (barEl) barEl.style.width = '100%';
-        if (pctEl) pctEl.textContent = '100%';
-        setTimeout(function () { if (progressEl) progressEl.classList.remove('show'); }, 500);
-        if (ok) { toast('上传完成', 'ok'); filesRefresh(); }
-        else toast(err || ('上传失败 (' + xhr.status + ')'), 'err');
+        var r = null;
+        try { r = JSON.parse(xhr.responseText || '{}'); } catch (e2) { r = null; }
+        if (!r || r.ok !== true) {
+          finish(false, (r && r.error) ? r.error
+            : ('上传失败（HTTP ' + xhr.status + '）：返回内容异常，可能被反向代理拦截或登录已过期'));
+          return;
+        }
+        var next = offset + blob.size;
+        if (r.done === true || next >= file.size) {
+          finish(true, null, r);
+        } else {
+          setProgress(next);
+          sendChunk(next);
+        }
       });
+      xhr.addEventListener('error', function () { finish(false, '上传出错：网络中断'); });
+      xhr.addEventListener('timeout', function () { finish(false, '上传超时，请重试'); });
+      xhr.send(blob);
+    }
 
-      xhr.addEventListener('error', function () {
-        if (progressEl) progressEl.classList.remove('show');
-        toast('上传出错：网络中断', 'err');
-      });
-
-      xhr.send(file);
-      e.target.value = '';
-    });
-  }
+    try {
+      sendChunk(0);
+    } catch (err) {
+      finish(false, '上传启动失败：' + err.message);
+    }
+    e.target.value = '';
+  });
 })();
 
 // ===================== 编辑 =====================

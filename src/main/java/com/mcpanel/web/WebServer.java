@@ -77,6 +77,12 @@ public class WebServer {
         Undertow.Builder mainBuilder = Undertow.builder()
                 .setIoThreads(ioThreads)
                 .setWorkerThreads(workerThreads);
+        // 显式放开请求体上限（部分 Undertow 版本默认会拒绝较大的请求体，
+        // 表现为文件管理里上传稍大的 jar 直接失败）。业务层仍按 20GB 限制。
+        try {
+            mainBuilder.setServerOption(io.undertow.UndertowOptions.MAX_ENTITY_SIZE,
+                    22L * 1024 * 1024 * 1024);
+        } catch (Throwable ignored) {}
         if (sslContext != null) mainBuilder.addHttpsListener(port, "0.0.0.0", sslContext);
         else mainBuilder.addHttpListener(port, "0.0.0.0");
 

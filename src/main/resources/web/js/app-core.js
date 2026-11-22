@@ -31,6 +31,19 @@ var currentInstanceId = '';
   };
 })();
 
+// 非 fetch 的请求（XMLHttpRequest 等）不会经过上面的 patchFetch，需要手动补 instance，
+// 否则后端会按“全局目录”处理，文件就会写到 workspace 根目录而不是实例目录里。
+function apiUrlWithInstance(url) {
+  try {
+    if (typeof currentInstanceId !== 'undefined' && currentInstanceId
+        && String(url).indexOf('instance=') < 0) {
+      return url + (String(url).indexOf('?') >= 0 ? '&' : '?')
+        + 'instance=' + encodeURIComponent(currentInstanceId);
+    }
+  } catch (e) {}
+  return url;
+}
+
 // ===================== 基础工具补齐 =====================
 function pathJoin() {
   var parts = [];
@@ -343,18 +356,23 @@ function loadPersonalization() {
 }
 
 // ===================== SPA 路由核心 =====================
+var initialFilesPath = '';
+
 function parseUrlAndState() {
   var pathParts = window.location.pathname.split('/').filter(p => p);
   var urlTab = 'instances';
-  
+  var filesSegs = [];
+
   var globalTabs = ['account', 'smtp', 'personalization', 'users', 'config', 'share', 'files', 'panel-log', 'panel-plugins', 'remote', 'instances'];
   var instTabs = ['terminal', 'backup', 'serverprops', 'java', 'installer', 'velocitycfg', 'plugins', 'files', 'remote'];
 
   currentInstanceId = '';
+  initialFilesPath = '';
 
   if (pathParts.length > 0) {
     if (globalTabs.indexOf(pathParts[0]) >= 0) {
       urlTab = pathParts[0];
+      if (urlTab === 'files') filesSegs = pathParts.slice(1);
     } else {
       if (pathParts.length > 1) {
         if (instTabs.indexOf(pathParts[0]) >= 0) {
@@ -362,9 +380,17 @@ function parseUrlAndState() {
         } else {
           currentInstanceId = pathParts[0];
           urlTab = pathParts[1] || 'terminal';
+          if (urlTab === 'files') filesSegs = pathParts.slice(2);
         }
       }
     }
+  }
+
+  // /files/a/b 或 /<实例ID>/files/a/b：解码后交给文件管理页恢复目录
+  if (urlTab === 'files' && filesSegs.length > 0) {
+    initialFilesPath = '/' + filesSegs.map(function (seg) {
+      try { return decodeURIComponent(seg); } catch (e) { return seg; }
+    }).join('/');
   }
 
   var finalUrl = '/';
@@ -377,6 +403,9 @@ function parseUrlAndState() {
       return 'instances';
     }
     finalUrl = '/' + (currentInstanceId ? currentInstanceId + '/' : '') + urlTab;
+    if (urlTab === 'files' && filesSegs.length > 0) {
+      finalUrl += '/' + filesSegs.join('/');
+    }
   }
 
   if (window.location.pathname !== finalUrl) {

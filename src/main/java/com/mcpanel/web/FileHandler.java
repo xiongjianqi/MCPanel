@@ -264,6 +264,11 @@ public class FileHandler {
             return;
         }
 
+        if (path.equals("/api/files/upload/chunk") && method.equals("POST")) {
+            handleUploadChunk(exchange);
+            return;
+        }
+
         if (path.equals("/api/files/list")) {
             exchange.getRequestReceiver().receiveFullString((ex, body) -> {
                 ex.dispatch(() -> handleListRequest(ex, body));
@@ -526,9 +531,19 @@ public class FileHandler {
         }
         try {
             Deque<String> pp = exchange.getQueryParameters().get("path");
+            if (pp == null || pp.isEmpty()) {
+                uploadError(exchange, 400, "缺少 path 参数");
+                return;
+            }
             Path file = safeResolve(sandboxRoot, pp.peekFirst());
             if (file.getParent() != null) Files.createDirectories(file.getParent());
-            
+
+            long contentLength = exchange.getRequestContentLength();
+            if (contentLength > MAX_UPLOAD_SIZE) {
+                uploadError(exchange, 413, "文件过大（本面板上限 20GB）");
+                return;
+            }
+
             exchange.startBlocking();
             long total = 0;
             try (InputStream in = exchange.getInputStream();
@@ -542,12 +557,147 @@ public class FileHandler {
                 }
             }
             syncPerm(file);
-            exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json");
-            exchange.getResponseSender().send("{\"ok\":true}");
+
+            long written;
+            try {
+                written = Files.size(file);
+            } catch (Exception e) {
+                written = -1;
+            }
+            if (written != total) {
+                System.err.println("[Files] 上传写入不完整: " + file.toAbsolutePath()
+                        + " 期望 " + total + " 实际 " + written);
+                uploadError(exchange, 500, "写入不完整（期望 " + total + " 字节，实际 " + written + "）");
+                return;
+            }
+
+            Map<String, Object> resp = new LinkedHashMap<>();
+            resp.put("ok", true);
+            resp.put("name", file.getFileName() == null ? "" : file.getFileName().toString());
+            try {
+                resp.put("path", sandboxRoot.relativize(file).toString().replace('\\', '/'));
+            } catch (Exception ignored) {}
+            resp.put("abs", file.toAbsolutePath().normalize().toString());
+            resp.put("size", total);
+            exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json; charset=utf-8");
+            exchange.getResponseSender().send(MAPPER.writeValueAsString(resp));
+        } catch (SecurityException se) {
+            // 权限 / 符号链接 / 路径越界等：把真实原因回给前端，方便定位
+            System.err.println("[Files] 上传被拒绝: " + se.getMessage());
+            uploadError(exchange, 403, se.getMessage() == null ? "无权限" : se.getMessage());
         } catch (Exception e) {
-            exchange.setStatusCode(500);
-            exchange.getResponseSender().send("{\"error\":\"上传失败\"}");
+            System.err.println("[Files] 上传失败: " + e);
+            String msg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            uploadError(exchange, 500, "上传失败: " + msg);
         }
+    }
+
+    /**
+     * 分片上传：前端把文件切成 4MB 一片顺序 POST 过来。
+     * 这样单次请求体很小，不会被反向代理的 body/超时限制拦掉（整包上传失败的常见原因），
+     * 断在中途也只需要重传当前片。
+     */
+    private void handleUploadChunk(HttpServerExchange exchange) {
+        if (exchange.isInIoThread()) {
+            exchange.dispatch(() -> handleUploadChunk(exchange));
+            return;
+        }
+        RandomAccessFile raf = null;
+        try {
+            Deque<String> pp = exchange.getQueryParameters().get("path");
+            if (pp == null || pp.isEmpty()) {
+                uploadError(exchange, 400, "缺少 path 参数");
+                return;
+            }
+            Path file = safeResolve(sandboxRoot, pp.peekFirst());
+            if (file.getParent() != null) Files.createDirectories(file.getParent());
+
+            long offset = queryLong(exchange, "offset", 0L);
+            long total = queryLong(exchange, "total", -1L);
+            if (offset < 0 || (total > 0 && offset > total)) {
+                uploadError(exchange, 400, "分片参数非法");
+                return;
+            }
+            if (offset == 0) {
+                // 第一片：清空旧文件，避免上次失败留下的内容混进来
+                raf = new RandomAccessFile(file.toFile(), "rw");
+                raf.setLength(0);
+            } else {
+                if (!Files.exists(file)) {
+                    uploadError(exchange, 409, "分片顺序错误：文件不存在");
+                    return;
+                }
+                raf = new RandomAccessFile(file.toFile(), "rw");
+            }
+            raf.seek(offset);
+
+            long written = 0;
+            exchange.startBlocking();
+            try (InputStream in = exchange.getInputStream()) {
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = in.read(buf)) != -1) {
+                    written += n;
+                    if (offset + written > MAX_UPLOAD_SIZE) throw new IOException("文件过大 (限 20GB)");
+                    raf.write(buf, 0, n);
+                }
+            }
+            long length = raf.length();
+            raf.close();
+            raf = null;
+
+            boolean done = total < 0 ? false : length >= total;
+            if (done) syncPerm(file);
+
+            Map<String, Object> resp = new LinkedHashMap<>();
+            resp.put("ok", true);
+            resp.put("received", offset + written);
+            resp.put("size", length);
+            if (done) {
+                resp.put("done", true);
+                resp.put("name", file.getFileName() == null ? "" : file.getFileName().toString());
+                try {
+                    resp.put("path", sandboxRoot.relativize(file).toString().replace('\\', '/'));
+                } catch (Exception ignored) {}
+                resp.put("abs", file.toAbsolutePath().normalize().toString());
+            }
+            exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json; charset=utf-8");
+            exchange.getResponseSender().send(MAPPER.writeValueAsString(resp));
+        } catch (SecurityException se) {
+            System.err.println("[Files] 分片上传被拒绝: " + se.getMessage());
+            uploadError(exchange, 403, se.getMessage() == null ? "无权限" : se.getMessage());
+        } catch (Exception e) {
+            System.err.println("[Files] 分片上传失败: " + e);
+            String msg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            uploadError(exchange, 500, "上传失败: " + msg);
+        } finally {
+            if (raf != null) {
+                try { raf.close(); } catch (Exception ignored) {}
+            }
+        }
+    }
+
+    private long queryLong(HttpServerExchange exchange, String name, long def) {
+        try {
+            Deque<String> q = exchange.getQueryParameters().get(name);
+            if (q == null || q.isEmpty()) return def;
+            return Long.parseLong(q.peekFirst().trim());
+        } catch (Exception e) {
+            return def;
+        }
+    }
+
+    /** 上传失败时返回带原因的 JSON（面板日志也会记录），不再只回一句"上传失败" */
+    private void uploadError(HttpServerExchange exchange, int status, String msg) {
+        try {
+            if (exchange.isResponseStarted()) { exchange.endExchange(); return; }
+            exchange.setStatusCode(status);
+            exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json; charset=utf-8");
+            String safe = String.valueOf(msg)
+                    .replace("\\", "\\\\").replace("\"", "\\\"")
+                    .replace("\n", " ").replace("\r", " ");
+            exchange.getResponseSender().send("{\"error\":\"" + safe + "\"}");
+        } catch (Throwable ignored) {}
     }
 
     private void copyRecursive(Path src, Path dst) throws IOException {
