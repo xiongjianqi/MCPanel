@@ -270,7 +270,8 @@ function updateSidebarVisibility() {
 
     if (t === 'instances') { a.style.display = ''; return; }
     if (t === 'users')     { a.style.display = hasPerm('users') ? '' : 'none'; return; }
-    if (t === 'config')    { a.style.display = hasPerm('config') ? '' : 'none'; return; }
+    // 配置管理只属于面板全局，进入实例后不再显示（实例配置由各实例自己的“服务器配置”负责）
+    if (t === 'config')    { a.style.display = (!inInstance && hasPerm('config')) ? '' : 'none'; return; }
     
     if (t === 'files') {
         if (inInstance) {
@@ -384,6 +385,12 @@ function parseUrlAndState() {
         }
       }
     }
+  }
+
+  // 配置管理只有全局一份：/实例ID/config 一律归位到 /config
+  if (urlTab === 'config') {
+    currentInstanceId = '';
+    filesSegs = [];
   }
 
   // /files/a/b 或 /<实例ID>/files/a/b：解码后交给文件管理页恢复目录

@@ -337,14 +337,10 @@ public class WebServer {
                     exchange.getResponseSender().send("{\"error\":\"no permission: config\"}");
                     return;
                 }
-                // ★ 只认显式的 ?instance= 参数，不再回退到 instance cookie：
-                // 以前进过实例后 cookie 一直留着，打开全局「配置管理」时会被当成实例配置，
-                // 自签 SSL 因此被写进 instances/<id>/ssl，面板启动时读全局配置当然不生效。
-                InstanceRuntime cfgRt = configTargetFromQuery(exchange);
-                // SSL 证书是面板级配置，永远写全局，不接受实例上下文
-                boolean panelSsl = path.equals("/api/config/generate-ssl") || path.equals("/api/config/upload-ssl");
-                ConfigManager cm = (cfgRt != null && !panelSsl) ? cfgRt.config : globalConfig;
-                new ConfigHandler(cm, auth, cfgRt != null && !panelSsl).handle(exchange);
+                // ★ 配置管理只有面板全局一份：不再按 instance cookie / 参数切到实例配置。
+                // 之前实例上下文会把面板级配置（尤其 SSL）写进 instances/<id>/，
+                // 面板启动只读全局配置，导致“生成了证书却不生效”。
+                new ConfigHandler(globalConfig, auth, false).handle(exchange);
                 return;
             }
 
@@ -466,15 +462,6 @@ public class WebServer {
         if (path.startsWith("/api/serverprops")) return "config";
         if (path.startsWith("/api/installer")) return "config";
         return null;
-    }
-
-    /** 只从显式 ?instance= 解析实例（用于配置页这类“默认全局”的接口） */
-    private InstanceRuntime configTargetFromQuery(HttpServerExchange exchange) {
-        Deque<String> qp = exchange.getQueryParameters().get("instance");
-        if (qp == null || qp.isEmpty()) return null;
-        String id = qp.peekFirst();
-        if (id == null || id.isEmpty()) return null;
-        return runtimeManager.get(id);
     }
 
     private String readInstanceId(HttpServerExchange exchange) {

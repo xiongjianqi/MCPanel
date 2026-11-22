@@ -441,7 +441,7 @@ function permsHtmlGrouped(currentInstances, currentInstancePerms, grantable) {
       html += '<summary><div style="flex:1;">实例：' + escapeHtml(inst.name || inst.id) + '</div>';
       html += '<label class="select-all-label"><input type="checkbox" class="row-check" onchange="toggleInstGroup(this, \'' + inst.id + '\')"> 全选</label></summary>';
       html += '<div class="perm-content">';
-      var instPerms = [['terminal','终端'],['files','文件管理'],['backup','备份管理'],['serverprops','服务器配置'],['velocitycfg','Velocity配置'],['java','Java环境'],['installer','安装服务端'],['config','实例配置管理'],['remote','远程控制 (SSH/SFTP)']];
+      var instPerms = [['terminal','终端'],['files','文件管理'],['backup','备份管理'],['serverprops','服务器配置'],['velocitycfg','Velocity配置'],['java','Java环境'],['installer','安装服务端'],['remote','远程控制 (SSH/SFTP)']];
       
       instPerms.forEach(function(p) {
         if (p[0] === 'remote' && !currentIsMain) return;
