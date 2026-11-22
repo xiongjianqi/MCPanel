@@ -130,6 +130,21 @@ public class DashboardHandler {
                     + com.mcpanel.util.Async.maxWorkers() + "） | " + sb
                     + " | " + com.mcpanel.util.ProcStats.summary());
 
+            // 把线程数超过 100 的实例单独列出来：多出来的线程到底挂在哪个服务端 JVM 上一眼可见
+            StringBuilder inst = new StringBuilder();
+            try {
+                for (com.mcpanel.instance.InstanceRuntime rt
+                        : com.mcpanel.instance.InstanceRuntimeManager.getInstance().all()) {
+                    long pid = rt.mcServer == null ? -1 : rt.mcServer.getPid();
+                    if (pid <= 0) continue;
+                    int threads = com.mcpanel.util.ProcStats.threadsOf(pid);
+                    if (threads < 100) continue;
+                    if (inst.length() > 0) inst.append(", ");
+                    inst.append(rt.inst.id).append('=').append(threads);
+                }
+            } catch (Throwable ignored) {}
+            if (inst.length() > 0) System.err.println("[Panel] 实例线程: " + inst);
+
             // 增长很快时把具体线程名打出来（最多 40 条），足够定位到是哪个组件在漏线程
             if (perMinute >= 20.0) {
                 StringBuilder detail = new StringBuilder();

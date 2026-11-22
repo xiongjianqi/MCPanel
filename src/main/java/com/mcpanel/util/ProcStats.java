@@ -55,6 +55,13 @@ public final class ProcStats {
         return out;
     }
 
+    /** 读取某个进程当前的线程数；进程不存在返回 0 */
+    public static int threadsOf(long pid) {
+        if (pid <= 0) return 0;
+        String[] names = new File("/proc/" + pid + "/task").list();
+        return names == null ? 0 : names.length;
+    }
+
     public static String summary() {
         List<JavaProc> list = javaProcesses();
         if (list.isEmpty()) return "无其他 java 进程";
