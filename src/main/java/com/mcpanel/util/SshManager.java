@@ -123,8 +123,17 @@ public class SshManager {
             newConfig.add("HostKey /etc/ssh/ssh_host_rsa_key");
             newConfig.add("HostKey /etc/ssh/ssh_host_ecdsa_key");
             newConfig.add("HostKey /etc/ssh/ssh_host_ed25519_key");
-            newConfig.add("PermitRootLogin yes");
-            newConfig.add("PasswordAuthentication yes");
+            // 仅密钥登录：公网 SSH 爆破基本都打密码认证，关掉后连接数会立刻降到接近 0。
+            // 但必须有可用的 Root 公钥，否则会把自己锁在门外。
+            boolean rootKeyExists = new File(persistSshDir, "root_rsa.pub").exists();
+            if (rootKeyExists) {
+                newConfig.add("PermitRootLogin prohibit-password");
+                newConfig.add("PasswordAuthentication no");
+            } else {
+                newConfig.add("PermitRootLogin yes");
+                newConfig.add("PasswordAuthentication yes");
+                logger.accept("[SshManager] ⚠ 未找到 Root 公钥，暂保留密码登录；先在【远程管理】里生成并下载密钥");
+            }
             newConfig.add("PubkeyAuthentication yes");
             newConfig.add("PermitEmptyPasswords no");
             newConfig.add("UsePAM no");

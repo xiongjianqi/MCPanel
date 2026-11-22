@@ -33,43 +33,45 @@ public class LinuxUserManager {
 
     private static int runCmd(long timeoutSec, String... cmd) {
         if (cmd == null || cmd.length == 0) return -2;
+        Process p = null;
         try {
-            Process p = new ProcessBuilder(cmd).redirectErrorStream(true).start();
-            Async.run(() -> {
-                try (BufferedReader br = new BufferedReader(
-                        new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
-                    while (br.readLine() != null) { }
-                } catch (Exception ignored) {}
-            });
-
+            // ★ 不再把"读输出"丢回 Async 的 4 线程池：
+            // initInstanceUser 自己就运行在这个池里，再提交读任务会和它抢线程，
+            // 输出堵在管道里 → waitFor 超时 → 第一次初始化用户几乎必然超过 8 秒。
+            // 直接丢弃输出，零额外线程，也不会堵管道。
+            p = new ProcessBuilder(cmd)
+                    .redirectErrorStream(true)
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                    .start();
             if (!p.waitFor(timeoutSec, TimeUnit.SECONDS)) {
                 p.destroyForcibly();
-                return -1; 
+                return -1;
             }
             return p.exitValue();
         } catch (Exception e) {
             return -2;
+        } finally {
+            if (p != null && p.isAlive()) {
+                try { p.destroyForcibly(); } catch (Exception ignored) {}
+            }
         }
     }
 
     private static String runCmdCapture(long timeoutSec, String... cmd) {
         if (cmd == null || cmd.length == 0) return null;
+        Process p = null;
         try {
-            Process p = new ProcessBuilder(cmd).redirectErrorStream(false).start();
-            StringBuilder out = new StringBuilder();
+            // stderr 合并进 stdout，只用一个独立 worker 读，避免再往 Async.run 池里塞任务
+            p = new ProcessBuilder(cmd).redirectErrorStream(true).start();
+            final Process proc = p;
+            final StringBuilder out = new StringBuilder();
             Thread t = Async.worker("runcap-out", () -> {
                 try (BufferedReader br = new BufferedReader(
-                        new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
+                        new InputStreamReader(proc.getInputStream(), StandardCharsets.UTF_8))) {
                     String line;
                     while ((line = br.readLine()) != null) {
                         if (out.length() < 4096) out.append(line).append('\n');
                     }
-                } catch (Exception ignored) {}
-            });
-            Async.run(() -> {
-                try (InputStream is = p.getErrorStream()) {
-                    byte[] buf = new byte[4096];
-                    while (is.read(buf) != -1) {}
                 } catch (Exception ignored) {}
             });
 
@@ -81,6 +83,10 @@ public class LinuxUserManager {
             return out.toString();
         } catch (Exception ex) {
             return null;
+        } finally {
+            if (p != null && p.isAlive()) {
+                try { p.destroyForcibly(); } catch (Exception ignored) {}
+            }
         }
     }
 
@@ -242,7 +248,8 @@ public class LinuxUserManager {
             Process p = new ProcessBuilder(su, "-s", "/bin/sh", username, "-c", "true")
                     .redirectErrorStream(true).start();
             final StringBuilder out = new StringBuilder();
-            Async.run(() -> {
+            // 用独立 worker 读，别占用 Async 的 4 线程任务池（startNative 本身就跑在池里）
+            Async.worker("cansu-out", () -> {
                 try (BufferedReader br = new BufferedReader(
                         new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
                     String line;

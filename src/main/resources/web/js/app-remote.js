@@ -96,13 +96,14 @@ function remoteInit() {
       var elSftp = document.getElementById('remote-sftp-port');
       if(elSftp) elSftp.textContent = r.sftpPort || '-';
       
+      // 已改为仅密钥登录：不再展示可用于 SSH/SFTP 的密码
       var elPass = document.getElementById('remote-pass');
-      if(elPass) elPass.textContent = r.pass || '-';
+      if(elPass) elPass.textContent = '-';
       var passBox = document.getElementById('remote-pass-box');
-      if(passBox) passBox.style.display = 'block';
-      
+      if(passBox) passBox.style.display = 'none';
+
       var authType = document.getElementById('remote-auth-type');
-      if(authType) authType.style.display = 'none';
+      if(authType) authType.style.display = 'block';
       
       var btnKey = document.getElementById('btn-download-key');
       if (btnKey) {

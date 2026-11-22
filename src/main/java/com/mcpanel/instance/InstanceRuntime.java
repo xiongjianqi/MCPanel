@@ -118,8 +118,9 @@ public class InstanceRuntime {
                 }
             });
             try {
-                if (!latch.await(8, TimeUnit.SECONDS)) {
-                    System.err.println("[Instance] " + inst.id + " 初始化系统用户超时，降级为普通启动");
+                // 首次要 useradd / openssl passwd / chown -R，慢机器上 8 秒确实不够
+                if (!latch.await(30, TimeUnit.SECONDS)) {
+                    System.err.println("[Instance] " + inst.id + " 初始化系统用户超时（30 秒），本次降级为普通启动");
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
