@@ -36,6 +36,7 @@ public class InstanceRuntime {
 
         this.config = new ConfigManager(inst.getDir());
         this.config.init();
+        dropInstanceSslConfig();
         this.config.setRuntime("_instance.id", inst.id);
         this.config.setRuntime("_instance.type", inst.type);
         ConfigManager globalCfg = ConfigManager.getInstance();
@@ -72,6 +73,19 @@ public class InstanceRuntime {
         ensure("velocity.auto.start", "true");
         ensure("velocity.port", "25577");
         ensure("terminal.shutdown.command", "shutdown");
+    }
+
+    /**
+     * 旧版本可能把面板级 SSL 配置（web.ssl.*）误写进实例配置，
+     * 而面板启动时只读全局配置，这些键除了误导没有任何作用，直接清掉。
+     */
+    private void dropInstanceSslConfig() {
+        String[] keys = {"web.ssl.enabled", "web.ssl.cert", "web.ssl.key"};
+        for (String k : keys) {
+            if (config.has(k)) {
+                config.remove(k);
+            }
+        }
     }
 
     /**

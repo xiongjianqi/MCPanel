@@ -106,14 +106,16 @@ public class ConfigHandler {
                 exchange.setStatusCode(403); exchange.getResponseSender().send("{\"error\":\"need master\"}"); return;
             }
             try {
-                File sslDir = config.resolve("ssl");
+                // 双保险：SSL 属于面板级配置，永远写到全局配置目录
+                ConfigManager sslCfg = ConfigManager.getInstance();
+                File sslDir = sslCfg.resolve("ssl");
                 if (!sslDir.exists()) sslDir.mkdirs();
                 File certFile = new File(sslDir, "cert.pem");
                 File keyFile = new File(sslDir, "key.pem");
                 com.mcpanel.util.SslUtil.generateSelfSigned(certFile, keyFile);
-                config.set("web.ssl.enabled", "true");
-                config.set("web.ssl.cert", "ssl/cert.pem");
-                config.set("web.ssl.key", "ssl/key.pem");
+                sslCfg.set("web.ssl.enabled", "true");
+                sslCfg.set("web.ssl.cert", "ssl/cert.pem");
+                sslCfg.set("web.ssl.key", "ssl/key.pem");
                 exchange.getResponseSender().send("{\"ok\":true}");
             } catch (Exception e) {
                 exchange.setStatusCode(500);
@@ -141,7 +143,8 @@ public class ConfigHandler {
                         if (!cert.contains("BEGIN CERTIFICATE") || !key.contains("PRIVATE KEY")) {
                             ex.setStatusCode(400); ex.getResponseSender().send("{\"error\":\"证书或私钥格式错误\"}"); return;
                         }
-                        File sslDir = config.resolve("ssl");
+                        ConfigManager sslCfg = ConfigManager.getInstance();
+                        File sslDir = sslCfg.resolve("ssl");
                         if (!sslDir.exists()) sslDir.mkdirs();
                     
                         File certFile = new File(sslDir, "cert.pem");
@@ -155,9 +158,9 @@ public class ConfigHandler {
                             keyFile.setWritable(false, false); keyFile.setWritable(true, true);
                         } catch (Exception ignored) {}
                     
-                        config.set("web.ssl.enabled", "true");
-                        config.set("web.ssl.cert", "ssl/cert.pem");
-                        config.set("web.ssl.key", "ssl/key.pem");
+                        sslCfg.set("web.ssl.enabled", "true");
+                        sslCfg.set("web.ssl.cert", "ssl/cert.pem");
+                        sslCfg.set("web.ssl.key", "ssl/key.pem");
                     
                         ex.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json");
                         ex.getResponseSender().send("{\"ok\":true}");
