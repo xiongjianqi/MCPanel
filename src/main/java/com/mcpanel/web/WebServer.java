@@ -95,30 +95,35 @@ public class WebServer {
         logThreadLimits();
     }
 
-    // 启动时把系统/容器的进程线程上限打出来，出现 "unable to create native thread" 时一眼能对上
+    // 启动时把线程概况合成一行打出来：本进程线程数、其他 java 进程线程数、进程/线程上限。
+    // 出现 "unable to create native thread" 时这一行就够定位了，不再分三行输出。
     private static void logThreadLimits() {
+        StringBuilder sb = new StringBuilder();
+        try {
+            sb.append("[Panel] 线程: 本进程 ")
+              .append(java.lang.management.ManagementFactory.getThreadMXBean().getThreadCount())
+              .append(" 条；").append(com.mcpanel.util.ProcStats.summary());
+        } catch (Throwable ignored) {}
         try {
             java.nio.file.Path limits = java.nio.file.Paths.get("/proc/self/limits");
             if (java.nio.file.Files.exists(limits)) {
                 for (String line : java.nio.file.Files.readAllLines(limits)) {
                     if (line.startsWith("Max processes")) {
-                        System.out.println("[Panel] 进程/线程上限: " + line.replaceAll("\\s+", " ").trim());
+                        sb.append("；").append(line.replaceAll("\\s+", " ").trim());
                         break;
                     }
                 }
             }
+        } catch (Throwable ignored) {}
+        try {
             java.nio.file.Path pidsMax = java.nio.file.Paths.get("/sys/fs/cgroup/pids.max");
             if (java.nio.file.Files.exists(pidsMax)) {
                 String v = new String(java.nio.file.Files.readAllBytes(pidsMax),
                         java.nio.charset.StandardCharsets.UTF_8).trim();
-                if (!v.isEmpty()) System.out.println("[Panel] cgroup pids.max: " + v);
+                if (!v.isEmpty()) sb.append("；cgroup pids.max ").append(v);
             }
-            // 面板只能看到自己 JVM 的线程；`ps -eLf` 看到的是整机/容器的线程总和。
-            // 这里把"其他 java 进程"的线程数也打出来，便于区分是面板漏线程还是残留 JVM。
-            System.out.println("[Panel] 线程概览: 本进程线程 "
-                    + java.lang.management.ManagementFactory.getThreadMXBean().getThreadCount()
-                    + " 条；" + com.mcpanel.util.ProcStats.summary());
         } catch (Throwable ignored) {}
+        if (sb.length() > 0) System.out.println(sb);
     }
 
     private void handleRequest(HttpServerExchange exchange) {

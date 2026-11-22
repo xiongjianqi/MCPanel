@@ -58,13 +58,10 @@ public class InstanceManager {
                     inst.saveMeta();
                 }
                 instances.put(id, inst);
-                System.out.println("[Instance] 加载实例: " + id
-                        + " (" + inst.name + ") [" + inst.type + "]");
             }
         } catch (IOException e) {
             System.err.println("[Instance] 扫描实例失败: " + e.getMessage());
         }
-        System.out.println("[Instance] 共加载 " + instances.size() + " 个实例");
     }
 
     public List<Instance> listInstances() {

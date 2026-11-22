@@ -28,7 +28,6 @@ public class DockerManager {
         checkedDocker = true;
         workDirPath = System.getProperty("user.dir");
 
-        logger.accept("[Runtime] 正在检测 Docker 环境...");
         if (testDocker()) {
             dockerAvailable = true;
             logger.accept("[Runtime] ✓ 检测到 Docker 引擎可用");
@@ -48,18 +47,10 @@ public class DockerManager {
             } catch (Exception ignored) {}
         }
 
-        logger.accept("[Runtime] ✗ 未检测到 Docker 引擎！");
-        
-        if (inDocker) {
-            logger.accept("[Runtime] ⚠️ 检测到当前程序在 Docker 容器内运行。");
-            logger.accept("[Runtime] 如果你拥有物理机操作权限且希望实现实例的容器化隔离，");
-            logger.accept("[Runtime] 请在宿主机安装 Docker，并将 MC Panel 放到宿主机中直接运行，而不是嵌套在容器中。");
-        } else {
-            logger.accept("[Runtime] 提示：如果你希望使用 Docker 容器来隔离 Minecraft 实例，");
-            logger.accept("[Runtime] 请在宿主机安装 Docker（如 apt install docker.io），安装完成后重启本面板即可。");
-        }
-        
-        logger.accept("[Runtime] 当前已自动降级为【无沙箱模式】运行，不影响面板基础功能。");
+        logger.accept("[Runtime] 未检测到 Docker 引擎，已降级为无沙箱模式运行"
+                + (inDocker
+                ? "（当前面板本身运行在容器内，如需实例级隔离请在宿主机运行面板）"
+                : "（如需隔离可安装 Docker 后重启面板）"));
     }
 
     public static boolean isDockerAvailable() {

@@ -9,8 +9,6 @@ import java.util.function.Consumer;
 
 public class EnvironmentHealer {
     public static void heal(Consumer<String> logger) {
-        logger.accept("[Healer] 正在将精简容器修补为完整 Linux 环境 ...");
-
         boolean isDebian = new File("/usr/bin/apt-get").exists();
         
         if (isDebian) {
@@ -93,7 +91,6 @@ public class EnvironmentHealer {
                             File bin = new File(dir, "bin");
                             if (bin.exists()) {
                                 bashrcContent.append("export PATH=").append(bin.getAbsolutePath()).append(":$PATH\n");
-                                logger.accept("[Healer] 已自动挂载 Java 环境: " + dir.getName());
                                 break; 
                             }
                         }
@@ -111,7 +108,6 @@ public class EnvironmentHealer {
             }
         } catch (Exception e) {}
 
-        logger.accept("[Healer] ✓ 容器已修补为标准 Linux 环境！");
     }
 
     private static void writePam(File dir, String name, List<String> lines) throws Exception {

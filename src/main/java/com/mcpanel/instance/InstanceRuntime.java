@@ -91,8 +91,6 @@ public class InstanceRuntime {
         if (started) return;
         started = true;
 
-        System.out.println("[Panel] 初始化实例运行时: " + inst.id + " [" + inst.type + "]");
-
         // ★ 核心修复：系统用户初始化挪到这里，最多等 5 秒；超时就跳过（不用 su 启动）
         if (LinuxUserManager.isEnabled(this) && !LinuxUserManager.isUserReady(inst)) {
             final CountDownLatch latch = new CountDownLatch(1);
