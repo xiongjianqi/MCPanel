@@ -42,12 +42,15 @@ public class WebServer {
         if (sslEnabled) {
             String certPath = globalConfig.get("web.ssl.cert", "");
             String keyPath = globalConfig.get("web.ssl.key", "");
-            if (!certPath.isEmpty() && !keyPath.isEmpty()) {
+            if (certPath.isEmpty() || keyPath.isEmpty()) {
+                System.err.println("[Panel] ⚠ 已启用 HTTPS 但未配置证书路径（web.ssl.cert / web.ssl.key），本次仍以 HTTP 启动");
+            } else {
                 try {
                     sslContext = com.mcpanel.util.SslUtil.createSslContext(
                             globalConfig.resolve(certPath), globalConfig.resolve(keyPath));
                 } catch (Exception e) {
-                    System.err.println("[Panel] SSL 证书加载失败: " + e.getMessage());
+                    System.err.println("[Panel] ⚠ HTTPS 已启用但证书加载失败，本次仍以 HTTP 启动："
+                            + e.getMessage() + "（浏览器用 https 访问会提示“发送了无效的数据”）");
                 }
             }
         }

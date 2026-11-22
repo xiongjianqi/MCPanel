@@ -46,6 +46,22 @@ public class SslUtil {
             fw.write(java.util.Base64.getMimeEncoder(64, new byte[]{'\n'}).encodeToString(keyPair.getPrivate().getEncoded()));
             fw.write("\n-----END PRIVATE KEY-----\n");
         }
+
+        // ★ 私钥必须是 600：createSslContext 会拒绝组/其他人可读的私钥，
+        // 而默认 umask 下生成的文件是 644，结果 SSL 加载失败、面板退回 HTTP，
+        // 浏览器访问 https 就会提示“发送了无效的数据”。
+        try {
+            java.nio.file.Files.setPosixFilePermissions(keyFile.toPath(),
+                    java.util.EnumSet.of(java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+                                         java.nio.file.attribute.PosixFilePermission.OWNER_WRITE));
+            java.nio.file.Files.setPosixFilePermissions(certFile.toPath(),
+                    java.util.EnumSet.of(java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+                                         java.nio.file.attribute.PosixFilePermission.OWNER_WRITE,
+                                         java.nio.file.attribute.PosixFilePermission.GROUP_READ,
+                                         java.nio.file.attribute.PosixFilePermission.OTHERS_READ));
+        } catch (Exception ignored) {
+            // Windows 等不支持 POSIX 权限的系统忽略
+        }
     }
 
     public static SSLContext createSslContextFromPem(File certFile, File keyFile) throws Exception {
@@ -83,7 +99,15 @@ public class SslUtil {
                     java.nio.file.Files.getPosixFilePermissions(p);
             if (perms.contains(java.nio.file.attribute.PosixFilePermission.GROUP_READ)
                     || perms.contains(java.nio.file.attribute.PosixFilePermission.OTHERS_READ)) {
-                throw new RuntimeException("私钥文件权限过宽，拒绝加载。请执行 chmod 600 " + keyFile.getAbsolutePath());
+                // 老版本生成/上传的私钥可能是 644：先尝试自动收紧到 600，实在不行再拒绝
+                try {
+                    java.nio.file.Files.setPosixFilePermissions(p,
+                            java.util.EnumSet.of(java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+                                                 java.nio.file.attribute.PosixFilePermission.OWNER_WRITE));
+                } catch (Exception fixErr) {
+                    throw new RuntimeException("私钥文件权限过宽且无法自动修复，请执行 chmod 600 "
+                            + keyFile.getAbsolutePath(), fixErr);
+                }
             }
         } catch (UnsupportedOperationException ignored) {
             // Windows 忽略
